@@ -81,6 +81,10 @@ deploy_codex_user() {
   done
 }
 
+check_direct_push_repo_lists() {
+  "$SCRIPTS/check-direct-push-repos.sh"
+}
+
 _copy_codex_skills_to() {
   local dest="$1" repo_name="$2"
   log "Codex skills  $dest/.codex/skills/"
@@ -255,21 +259,24 @@ _git_deploy() {
 case "${1:-help}" in
   user)
     $DRY && echo "(dry run)"
+    check_direct_push_repo_lists
     deploy_claude_user
     deploy_opencode_user
     deploy_codex_user
     echo ""
-    echo "완료. 이후 commands/ 수정 시 symlink로 자동 반영됩니다."
+    echo "완료. Claude/opencode는 commands/, Codex는 codex/skills override 또는 commands fallback symlink로 자동 반영됩니다."
     ;;
   project)
     if [[ -z "${2:-}" ]]; then err "Usage: $0 project <path> [--dry]"; exit 1; fi
     proj="${2%/}"
     [[ ! -d "$proj" ]] && { err "디렉토리 없음: $proj"; exit 1; }
     $DRY && echo "(dry run)"
+    check_direct_push_repo_lists
     _git_deploy "$proj"
     ;;
   all-projects)
     $DRY && echo "(dry run)"
+    check_direct_push_repo_lists
     updated=0; unchanged=0
     while IFS= read -r proj; do
       [[ "$proj" == "$REPO" ]] && continue
