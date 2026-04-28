@@ -1,4 +1,5 @@
 ---
+name: apply-review
 description: Apply all review feedback; split into timeout-safe chunks; do not stop until every item is done
 argument-hint: [review text, PR/comment URL, or path to review notes]
 ---

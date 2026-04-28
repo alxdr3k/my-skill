@@ -1,3 +1,8 @@
+---
+name: e2e-fix
+description: CI E2E 테스트 실패를 Codex(디버깅·수정) + Claude(로컬 테스트) 루프로 수정
+---
+
 CI E2E 테스트 실패를 Codex(디버깅·수정) + Claude(로컬 테스트) 루프로 고쳐줘.
 
 ## 역할 분담

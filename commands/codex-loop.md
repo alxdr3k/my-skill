@@ -1,3 +1,8 @@
+---
+name: codex-loop
+description: 현재 PR의 codex 리뷰를 기다리고 코멘트 수정 후 push, 통과 reaction까지 반복
+---
+
 현재 작업 중인 PR에 대해 codex 리뷰를 기다리고, 코멘트가 달리면 수정 후 push. 통과 reaction까지 반복.
 
 ## ⚠️ 핵심 원칙: foreground sync로 한 번만 호출

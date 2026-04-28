@@ -59,6 +59,21 @@ deploy_codex_user() {
   $DRY && { ok "[dry] copy default.rules"; return; }
   cp "$CODEX_RULES" "$HOME/.codex/rules/default.rules"
   ok "default.rules → copied"
+  # skills: 각 커맨드를 ~/.codex/skills/<name>/SKILL.md 로 배포
+  log "Codex  ~/.codex/skills/"
+  for f in "$CMDS"/*.md; do
+    name="$(basename "$f" .md)"
+    _link "$f" "$HOME/.codex/skills/$name/SKILL.md"
+  done
+}
+
+_copy_codex_skills_to() {
+  local dest="$1" proj="$2"
+  log "Codex skills  $dest/.codex/skills/"
+  for f in "$CMDS"/*.md; do
+    name="$(basename "$f" .md)"
+    _copy "$f" "$dest/.codex/skills/$name/SKILL.md"
+  done
 }
 
 # ── copy files to a destination path ─────────────────────────────────────────
@@ -118,6 +133,7 @@ _git_deploy() {
   if $DRY; then
     _copy_claude_to "$proj"
     _copy_opencode_to "$proj" "$proj"
+    _copy_codex_skills_to "$proj" "$proj"
     ok "[dry] would commit + push + squash merge → $base"
     return 0
   fi
@@ -130,14 +146,14 @@ _git_deploy() {
   # 파일 복사 (worktree로)
   _copy_claude_to "$wt_branch"
   _copy_opencode_to "$wt_branch" "$proj"
+  _copy_codex_skills_to "$wt_branch" "$proj"
 
   # 프로젝트에 잘못 배포된 direct-push-repos.txt 제거
   rm -f "$wt_branch/.claude/direct-push-repos.txt"
   git -C "$wt_branch" rm --cached --force ".claude/direct-push-repos.txt" -q 2>/dev/null || true
 
   # stage
-  git -C "$wt_branch" add ".claude" 2>/dev/null || true
-  git -C "$wt_branch" add ".opencode" 2>/dev/null || true
+  git -C "$wt_branch" add ".claude" ".opencode" ".codex" 2>/dev/null || true
 
   if git -C "$wt_branch" diff --cached --quiet; then
     skip "변경 없음 — skip"
@@ -165,6 +181,7 @@ _git_deploy() {
   # pull 후에도 없는 파일은 로컬 복사 (e.g. 로컬이 feature 브랜치인 경우)
   _copy_claude_to "$proj"
   _copy_opencode_to "$proj" "$proj"
+  _copy_codex_skills_to "$proj" "$proj"
   rm -f "$proj/.claude/direct-push-repos.txt"
   ok "local synced"
 
