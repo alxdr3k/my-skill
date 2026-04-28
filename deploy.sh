@@ -71,7 +71,6 @@ _copy_claude_to() {
     _copy "$f" "$dest/.claude/scripts/$(basename "$f")"
     $DRY || chmod +x "$dest/.claude/scripts/$(basename "$f")"
   done
-  _copy "$REPO/direct-push-repos.txt" "$dest/.claude/direct-push-repos.txt"
 }
 
 _copy_opencode_to() {
@@ -132,6 +131,10 @@ _git_deploy() {
   _copy_claude_to "$wt_branch"
   _copy_opencode_to "$wt_branch" "$proj"
 
+  # 프로젝트에 잘못 배포된 direct-push-repos.txt 제거
+  rm -f "$wt_branch/.claude/direct-push-repos.txt"
+  git -C "$wt_branch" rm --cached --force ".claude/direct-push-repos.txt" -q 2>/dev/null || true
+
   # stage
   git -C "$wt_branch" add ".claude" 2>/dev/null || true
   git -C "$wt_branch" add ".opencode" 2>/dev/null || true
@@ -158,6 +161,7 @@ _git_deploy() {
   # 로컬 프로젝트에도 복사 (Claude Code는 로컬 파일 읽음)
   _copy_claude_to "$proj"
   _copy_opencode_to "$proj" "$proj"
+  rm -f "$proj/.claude/direct-push-repos.txt"
   ok "local files updated"
 
   # worktree 및 브랜치 정리
