@@ -107,9 +107,13 @@ _git_commit() {
   local prev_dir="$PWD"
   cd "$proj"
 
-  # base 브랜치 결정: dev > main 순
+  # base 브랜치 결정: Direct-push 리포는 main, 그 외 dev > main 순
   local base
-  if git show-ref --verify --quiet refs/heads/dev; then
+  local repo_name
+  repo_name="$(basename "$proj")"
+  if [[ "$repo_name" == "actwyn" || "$repo_name" == "concluv" || "$repo_name" == "statistics-for-data-science" ]]; then
+    base="main"
+  elif git show-ref --verify --quiet refs/heads/dev; then
     base="dev"
   else
     base="main"
