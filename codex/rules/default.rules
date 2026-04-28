@@ -1,0 +1,6 @@
+prefix_rule(pattern=["git", "fetch", "origin"], decision="allow")
+prefix_rule(pattern=["git", "checkout", "-b"], decision="allow")
+prefix_rule(pattern=["gh", "run", "list"], decision="allow")
+prefix_rule(pattern=["git", "add"], decision="allow")
+prefix_rule(pattern=["git", "commit"], decision="allow")
+prefix_rule(pattern=["git", "push"], decision="allow")
