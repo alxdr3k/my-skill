@@ -1,8 +1,17 @@
 ---
 description: 전체 개발 사이클: pull → doc 정합성 감사(codex) → 구현 → verify → review → ship
+argument-hint: [--loop]
 ---
 
 # Dev Cycle
+
+## 플래그
+
+- `--loop` : 한 사이클이 완료된 후 Phase 1부터 자동으로 재시작한다. Phase 3에서 **ALL CLEAR**가 반환될 때까지 반복한다.
+
+`$ARGUMENTS` 에 `--loop` 포함 여부를 확인하고 루프 동작을 결정한다.
+
+---
 
 아래 단계를 순서대로 실행하라.
 
@@ -133,3 +142,10 @@ git push origin main
 1. `gh pr create --base dev --draft=false` 로 PR 생성 (제목/본문 적절히 작성)
 2. `/codex-loop` 커맨드를 실행한다
 3. codex-loop 완료 후 해당 PR을 `dev` 브랜치에 **squash merge**한다
+
+---
+
+## 루프 재시작
+
+`--loop` 플래그가 있으면 Phase 7 완료 후 즉시 Phase 1로 돌아가 사이클을 재시작한다.
+Phase 3에서 **ALL CLEAR**가 반환되면 루프를 종료하고 사용자에게 보고한다.
