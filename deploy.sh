@@ -100,28 +100,64 @@ deploy_opencode_project() {
   done
 }
 
-# ── git commit (touched paths only, skip if no changes) ─────────────────────
+# ── git: branch → commit → push → merge → push base ─────────────────────────
 
 _git_commit() {
   local proj="$1"
   local prev_dir="$PWD"
   cd "$proj"
 
+  # base 브랜치 결정: dev > main 순
+  local base
+  if git show-ref --verify --quiet refs/heads/dev; then
+    base="dev"
+  else
+    base="main"
+  fi
+
+  local orig_branch
+  orig_branch="$(git branch --show-current)"
+
+  # base로 이동
+  git checkout "$base" -q
+
+  # 작업 브랜치 생성 (이미 있으면 삭제 후 재생성)
+  local branch="chore/sync-commands"
+  git branch -D "$branch" 2>/dev/null || true
+  git checkout -b "$branch" -q
+
+  # 파일 복사는 이미 완료된 상태 — stage
   git add ".claude/commands" ".claude/scripts" 2>/dev/null || true
   [[ -f "opencode.jsonc" || -d ".opencode" ]] && git add ".opencode/command" 2>/dev/null || true
 
   if git diff --cached --quiet; then
-    skip "변경 없음 — commit skip"
+    skip "변경 없음 — skip"
+    git checkout "$orig_branch" -q
+    git branch -D "$branch" 2>/dev/null || true
     cd "$prev_dir"
     return 1
   fi
 
   git commit -m "chore: sync shared commands from alxdr3k/my-skill"
-  ok "committed"
-  git push 2>/dev/null && ok "pushed" || {
-    # 트래킹 브랜치 없으면 upstream 설정 후 push
-    git push --set-upstream origin "$(git branch --show-current)" && ok "pushed (upstream set)"
-  }
+  ok "committed on $branch"
+
+  git push --set-upstream origin "$branch" -q
+  ok "pushed $branch"
+
+  # base에 squash merge 후 push
+  git checkout "$base" -q
+  git merge --squash "$branch" -q
+  git commit -m "chore: sync shared commands from alxdr3k/my-skill"
+  git push origin "$base" -q
+  ok "merged → $base, pushed"
+
+  # 작업 브랜치 정리
+  git branch -D "$branch"
+  git push origin --delete "$branch" -q 2>/dev/null || true
+
+  # 원래 브랜치 복원 (base와 다를 경우)
+  [[ "$orig_branch" != "$base" ]] && git checkout "$orig_branch" -q || true
+
   cd "$prev_dir"
   return 0
 }
