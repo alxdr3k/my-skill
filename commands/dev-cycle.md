@@ -89,12 +89,17 @@ echo "Review base: $REVIEW_BASE"
 각 사이클이 끝날 때 사용자가 바로 읽을 수 있는 짧은 브리핑을 출력하고, loop 종료 시
 종합 브리핑할 수 있도록 이번 `dev-cycle` 실행 동안만 repo-local 임시 로그에 누적한다.
 
-로그 파일은 git에 잡히지 않도록 `.git` 내부에 둔다. 새 `dev-cycle` 실행을 시작할
-때마다 파일을 overwrite하므로 이전 실행 브리핑은 섞지 않는다.
+로그 파일은 repo root의 `.dev-cycle/` 아래에 둔다. `.git/` 내부는 권한 문제를
+일으킬 수 있으므로 사용하지 않는다. `.dev-cycle/`은 git에 잡히지 않도록
+`.git/info/exclude`에 추가한다. 새 `dev-cycle` 실행을 시작할 때마다 파일을
+overwrite하므로 이전 실행 브리핑은 섞지 않는다.
 
 ```bash
 DEV_CYCLE_RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)"
-DEV_CYCLE_BRIEF_LOG="$(git rev-parse --git-dir)/dev-cycle-briefs.md"
+DEV_CYCLE_STATE_DIR="$(git rev-parse --show-toplevel)/.dev-cycle"
+mkdir -p "$DEV_CYCLE_STATE_DIR"
+grep -qxF ".dev-cycle/" "$(git rev-parse --git-dir)/info/exclude" 2>/dev/null || printf ".dev-cycle/\n" >> "$(git rev-parse --git-dir)/info/exclude"
+DEV_CYCLE_BRIEF_LOG="$DEV_CYCLE_STATE_DIR/dev-cycle-briefs.md"
 printf "# Dev Cycle Briefs %s\n\n" "$DEV_CYCLE_RUN_ID" > "$DEV_CYCLE_BRIEF_LOG"
 ```
 
@@ -114,6 +119,23 @@ printf "# Dev Cycle Briefs %s\n\n" "$DEV_CYCLE_RUN_ID" > "$DEV_CYCLE_BRIEF_LOG"
 - Review/Ship: <review 결과, PR/merge/push 결과>
 - Risk: <남은 리스크 또는 없음>
 ```
+
+### Risk issue 생성
+
+`Risk:`가 `없음`, `None`, `No risk`, `N/A`가 아니면 사이클 종료 전에 반드시
+GitHub issue를 생성한다. issue를 만들기 전까지 해당 risk는 처리 완료로 보지 않는다.
+
+```bash
+gh issue create \
+  --title "[dev-cycle risk] <한 줄 요약>" \
+  --body "<Cycle 브리핑 전체 + 남은 리스크 + 다음 후보 작업>"
+```
+
+- issue 본문에는 Cycle 번호, Work, Verification, Review/Ship, Risk, 추천 next
+  action을 포함한다.
+- issue 생성에 성공하면 Cycle 브리핑의 `Risk:` 또는 `Review/Ship:`에 issue 번호/URL을
+  남긴다.
+- 인증/권한 문제로 issue 생성에 실패하면 cycle 결과를 `blocked`로 보고하고 멈춘다.
 
 loop 모드가 끝나면 `$DEV_CYCLE_BRIEF_LOG`를 읽어 전체 iteration의 종합 브리핑을
 8줄 이내로 다시 출력한다. 로그 파일이 없으면 `git log`, `git status`, 현재 대화

@@ -85,6 +85,13 @@ check_direct_push_repo_lists() {
   "$SCRIPTS/check-direct-push-repos.sh"
 }
 
+ensure_local_excludes() {
+  local proj="$1" exclude_file
+  exclude_file="$proj/.git/info/exclude"
+  [[ -f "$exclude_file" ]] || return 0
+  grep -qxF ".dev-cycle/" "$exclude_file" 2>/dev/null || echo ".dev-cycle/" >> "$exclude_file"
+}
+
 _copy_codex_skills_to() {
   local dest="$1" repo_name="$2"
   log "Codex skills  $dest/.codex/skills/"
@@ -238,6 +245,7 @@ _git_deploy() {
   # untracked 커맨드 파일 정리 후 pull → remote 상태와 일치시킴
   git -C "$proj" clean -f ".claude/commands/" ".claude/scripts/" 2>/dev/null || true
   git -C "$proj" pull --ff-only -q 2>/dev/null || true
+  ensure_local_excludes "$proj"
   # pull 후에도 없는 파일은 로컬 복사 (e.g. 로컬이 feature 브랜치인 경우)
   _copy_claude_to "$proj" "$repo_name"
   _copy_opencode_to "$proj" "$proj"
@@ -260,6 +268,7 @@ case "${1:-help}" in
   user)
     $DRY && echo "(dry run)"
     check_direct_push_repo_lists
+    $DRY || ensure_local_excludes "$REPO"
     deploy_claude_user
     deploy_opencode_user
     deploy_codex_user
