@@ -111,7 +111,7 @@ _git_commit() {
   local base
   local repo_name
   repo_name="$(basename "$proj")"
-  if [[ "$repo_name" == "actwyn" || "$repo_name" == "concluv" || "$repo_name" == "statistics-for-data-science" ]]; then
+  if grep -qxF "$repo_name" "$REPO/direct-push-repos.txt" 2>/dev/null; then
     base="main"
   elif git show-ref --verify --quiet refs/heads/dev; then
     base="dev"
