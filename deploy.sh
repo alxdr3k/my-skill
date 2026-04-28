@@ -14,6 +14,7 @@ REPO="$(cd "$(dirname "$0")" && pwd)"
 CMDS="$REPO/commands"
 SCRIPTS="$REPO/scripts"
 CODEX_RULES="$REPO/codex/rules/default.rules"
+CODEX_SKILLS="$REPO/codex/skills"
 
 GRN='\033[0;32m'; BLU='\033[0;34m'; YLW='\033[1;33m'; RED='\033[0;31m'; NC='\033[0m'
 log()  { echo -e "${BLU}→${NC} $*"; }
@@ -40,6 +41,16 @@ _copy() {
   ok "$(basename "$dst") → copied"
 }
 
+_codex_skill_source() {
+  local name="$1" fallback="$2" override
+  override="$CODEX_SKILLS/$name/SKILL.md"
+  if [[ -f "$override" ]]; then
+    echo "$override"
+  else
+    echo "$fallback"
+  fi
+}
+
 # ── user-level (symlinks so edits propagate immediately) ─────────────────────
 
 deploy_claude_user() {
@@ -56,14 +67,17 @@ deploy_opencode_user() {
 deploy_codex_user() {
   if [[ ! -d "$HOME/.codex" ]]; then skip "Codex: ~/.codex 없음 — skip"; return; fi
   log "Codex  ~/.codex/rules/default.rules"
-  $DRY && { ok "[dry] copy default.rules"; return; }
-  cp "$CODEX_RULES" "$HOME/.codex/rules/default.rules"
-  ok "default.rules → copied"
+  if $DRY; then
+    ok "[dry] copy default.rules"
+  else
+    cp "$CODEX_RULES" "$HOME/.codex/rules/default.rules"
+    ok "default.rules → copied"
+  fi
   # skills: 각 커맨드를 ~/.codex/skills/<name>/SKILL.md 로 배포
   log "Codex  ~/.codex/skills/"
   for f in "$CMDS"/*.md; do
     name="$(basename "$f" .md)"
-    _link "$f" "$HOME/.codex/skills/$name/SKILL.md"
+    _link "$(_codex_skill_source "$name" "$f")" "$HOME/.codex/skills/$name/SKILL.md"
   done
 }
 
@@ -73,7 +87,7 @@ _copy_codex_skills_to() {
   for f in "$CMDS"/*.md; do
     local name; name="$(basename "$f" .md)"
     if _in_scope "$f" "$repo_name"; then
-      _copy "$f" "$dest/.codex/skills/$name/SKILL.md"
+      _copy "$(_codex_skill_source "$name" "$f")" "$dest/.codex/skills/$name/SKILL.md"
     else
       $DRY || rm -rf "$dest/.codex/skills/$name"
       skip "$name skill — projects scope 밖 ($repo_name)"
@@ -125,16 +139,31 @@ _copy_opencode_to() {
 
 # ── base branch detection ─────────────────────────────────────────────────────
 
+_is_direct_push_repo() {
+  local repo_name="$1"
+  grep -qxF "$repo_name" "$REPO/direct-push-repos.txt" 2>/dev/null
+}
+
+_default_branch() {
+  local proj="$1" branch
+  branch="$(git -C "$proj" symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##' || true)"
+  if [[ -z "$branch" ]]; then
+    branch="$(git -C "$proj" remote show origin 2>/dev/null | sed -n '/HEAD branch/s/.*: //p' || true)"
+  fi
+  echo "${branch:-main}"
+}
+
 _base_branch() {
   local proj="$1"
   local repo_name
   repo_name="$(basename "$proj")"
-  if grep -qxF "$repo_name" "$REPO/direct-push-repos.txt" 2>/dev/null; then
+  if _is_direct_push_repo "$repo_name"; then
     echo "main"
-  elif git -C "$proj" show-ref --verify --quiet refs/heads/dev; then
+  elif git -C "$proj" show-ref --verify --quiet refs/remotes/origin/dev ||
+       git -C "$proj" show-ref --verify --quiet refs/heads/dev; then
     echo "dev"
   else
-    echo "main"
+    _default_branch "$proj"
   fi
 }
 
