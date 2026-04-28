@@ -29,7 +29,7 @@ git pull origin main
 
 ---
 
-## Phase 2–4 — 문서 정합성 감사 & 다음 작업 식별 (codex:rescue 위임)
+## Phase 2 — 문서 정합성 감사 (codex:rescue 위임)
 
 `codex:rescue` 스킬을 호출하여 다음 프롬프트를 전달하라:
 
@@ -62,35 +62,40 @@ git pull origin main
 
 ---
 
-codex:rescue의 출력 결과를 파싱하여 다음 Phase의 행동을 결정한다.
+## Phase 3 — 결과 판단 (Claude 실행)
+
+- **ALL CLEAR:** 사용자에게 현재 상태를 보고하고 중단한다.
+- **DOC FIX NEEDED:** Phase 4로 진행, 작업 유형은 `docs`
+- **NEXT TASK:** Phase 4로 진행, 작업 유형은 codex가 반환한 내용에 따라 결정
 
 ---
 
-## Phase 3–5 — 브랜치 & 구현 (Claude 실행)
+## Phase 4 — 브랜치 생성 & 구현 (Claude 실행)
 
-**ALL CLEAR인 경우:** 사용자에게 현재 상태를 보고하고 중단한다.
+**브랜치 명명:** `<type>/<짧은-설명>`
 
-**Direct-push 리포:** `main` 브랜치 그대로 유지, 직접 커밋
+`<type>`은 conventional commit 타입 중 적절한 것을 사용한다:
+`feat` / `fix` / `docs` / `refactor` / `perf` / `test` / `chore` 등
 
-**Standard 리포:**
-- Doc fix: `git checkout -b docs/<짧은-설명>`
-- 기능 구현: `git checkout -b feat/<짧은-설명>`
+**Direct-push 리포:** 브랜치 생성 없이 `main`에서 직접 작업
 
-Phase 2–4에서 받은 프롬프트(DOC FIX NEEDED 또는 NEXT TASK)를 실행한다.
+**Standard 리포:** 위 규칙에 따라 브랜치 생성 후 작업
+
+Phase 2에서 받은 프롬프트(DOC FIX NEEDED 또는 NEXT TASK)를 실행한다.
 
 ---
 
-## Phase 6 — Verify (Claude 실행)
+## Phase 5 — Verify (Claude 실행)
 
 `/verify` 커맨드를 실행한다.
 
 ---
 
-## Phase 7 — Code Review 루프 (Claude 실행)
+## Phase 6 — Code Review 루프 (Claude 실행)
 
 구현 작업 규모를 먼저 판단한다:
 
-- **깊은 리뷰 필요 기준:** 변경된 파일 5개 초과, 또는 새 기능/아키텍처 변경, 또는 보안·인증 관련 코드 포함
+**깊은 리뷰 필요 기준:** 변경된 파일 5개 초과, 또는 새 기능/아키텍처 변경, 또는 보안·인증 관련 코드 포함
 
 ### 리뷰 루프
 
@@ -101,14 +106,14 @@ Phase 2–4에서 받은 프롬프트(DOC FIX NEEDED 또는 NEXT TASK)를 실행
 | 3회차~ | `/codex:review` | `/codex:review` |
 
 **루프 절차:**
-1. 위 표에 따라 적절한 리뷰 스킬을 실행한다
-2. 리뷰 결과가 **pass**이면 Phase 8로 진행한다
-3. 리뷰 결과에 지적 사항이 있으면 수정 후 `/verify` 재실행, 그 다음 회차 리뷰로 반복한다
+1. 위 표에 따라 현재 회차에 맞는 리뷰 스킬을 실행한다
+2. 리뷰 결과가 **pass**이면 Phase 7로 진행한다
+3. 리뷰 결과에 지적 사항이 있으면 수정 후, 다음 회차 리뷰 스킬로 즉시 반복한다 (verify 생략)
 4. pass가 나올 때까지 반복한다
 
 ---
 
-## Phase 8 — Ship (Claude 실행)
+## Phase 7 — Ship (Claude 실행)
 
 **Direct-push 리포:**
 
