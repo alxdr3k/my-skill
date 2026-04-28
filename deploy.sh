@@ -152,8 +152,10 @@ _git_deploy() {
   rm -f "$wt_branch/.claude/direct-push-repos.txt"
   git -C "$wt_branch" rm --cached --force ".claude/direct-push-repos.txt" -q 2>/dev/null || true
 
-  # stage
-  git -C "$wt_branch" add ".claude" ".opencode" ".codex" 2>/dev/null || true
+  # stage (경로별로 분리 — 없는 경로가 있으면 git add 전체가 fatal로 abort됨)
+  git -C "$wt_branch" add ".claude" 2>/dev/null || true
+  git -C "$wt_branch" add ".opencode" 2>/dev/null || true
+  git -C "$wt_branch" add ".codex" 2>/dev/null || true
 
   if git -C "$wt_branch" diff --cached --quiet; then
     skip "변경 없음 — skip"
