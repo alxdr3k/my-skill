@@ -30,6 +30,7 @@ argument-hint: [--loop [N]] [--phase <id>]
 **Direct-push 리포 (main에 직접 커밋/push):**
 - actwyn
 - concluv
+- boilerplate
 - statistics-for-data-science
 
 리포 이름이 위 목록에 있으면 Direct-push 리포로 취급한다.
