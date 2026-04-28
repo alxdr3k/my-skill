@@ -158,11 +158,15 @@ _git_deploy() {
   git -C "$wt_branch" push origin "$merge_branch:$base" -q
   ok "merged → $base, pushed"
 
-  # 로컬 프로젝트에도 복사 (Claude Code는 로컬 파일 읽음)
+  # 로컬 프로젝트 동기화 (Claude Code는 로컬 파일 읽음)
+  # untracked 커맨드 파일 정리 후 pull → remote 상태와 일치시킴
+  git -C "$proj" clean -f ".claude/commands/" ".claude/scripts/" 2>/dev/null || true
+  git -C "$proj" pull --ff-only -q 2>/dev/null || true
+  # pull 후에도 없는 파일은 로컬 복사 (e.g. 로컬이 feature 브랜치인 경우)
   _copy_claude_to "$proj"
   _copy_opencode_to "$proj" "$proj"
   rm -f "$proj/.claude/direct-push-repos.txt"
-  ok "local files updated"
+  ok "local synced"
 
   # worktree 및 브랜치 정리
   git -C "$proj" worktree remove "$wt_branch" --force
