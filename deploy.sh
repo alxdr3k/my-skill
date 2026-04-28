@@ -108,14 +108,13 @@ _git_deploy() {
   base="$(_base_branch "$proj")"
 
   local branch="chore/sync-commands"
+  local merge_branch="temp-sync-merge"
   local wt_branch="/tmp/my-skill-${repo_name}-branch"
-  local wt_base="/tmp/my-skill-${repo_name}-base"
 
   # 잔여 worktree/branch 정리
   git -C "$proj" worktree remove "$wt_branch" --force 2>/dev/null || true
-  git -C "$proj" worktree remove "$wt_base"   --force 2>/dev/null || true
-  rm -rf "$wt_branch" "$wt_base"
-  git -C "$proj" branch -D "$branch" 2>/dev/null || true
+  rm -rf "$wt_branch"
+  git -C "$proj" branch -D "$branch" "$merge_branch" 2>/dev/null || true
 
   if $DRY; then
     _copy_claude_to "$proj"
@@ -124,8 +123,9 @@ _git_deploy() {
     return 0
   fi
 
-  # sync 브랜치 worktree 생성
-  git -C "$proj" worktree add "$wt_branch" "$base" -q
+  # origin/base 최신화 후 detached HEAD로 worktree 생성 (로컬 base 브랜치 불필요)
+  git -C "$proj" fetch origin "$base" -q
+  git -C "$proj" worktree add --detach "$wt_branch" "origin/$base" -q
   git -C "$wt_branch" checkout -b "$branch" -q
 
   # 파일 복사 (worktree로)
@@ -147,18 +147,18 @@ _git_deploy() {
   git -C "$wt_branch" push --set-upstream origin "$branch" -q
   ok "pushed $branch"
 
-  # base worktree에서 squash merge (main worktree 건드리지 않음)
-  git -C "$proj" worktree add "$wt_base" "$base" -q
-  git -C "$wt_base" merge --squash "$branch" -q
-  git -C "$wt_base" commit -m "chore: sync shared commands from alxdr3k/my-skill" -q
-  git -C "$wt_base" push origin "$base" -q
+  # 같은 worktree에서 origin/base 기반 임시 브랜치로 squash merge 후 push
+  # → 로컬 base 브랜치 체크아웃 불필요, 메인 워크트리 무간섭
+  git -C "$wt_branch" checkout -b "$merge_branch" "origin/$base" -q
+  git -C "$wt_branch" merge --squash "$branch" -q
+  git -C "$wt_branch" commit -m "chore: sync shared commands from alxdr3k/my-skill" -q
+  git -C "$wt_branch" push origin "$merge_branch:$base" -q
   ok "merged → $base, pushed"
 
   # worktree 및 브랜치 정리
   git -C "$proj" worktree remove "$wt_branch" --force
-  git -C "$proj" worktree remove "$wt_base"   --force
-  rm -rf "$wt_branch" "$wt_base"
-  git -C "$proj" branch -D "$branch" 2>/dev/null || true
+  rm -rf "$wt_branch"
+  git -C "$proj" branch -D "$branch" "$merge_branch" 2>/dev/null || true
   git -C "$proj" push origin --delete "$branch" -q 2>/dev/null || true
 
   return 0
