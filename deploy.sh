@@ -3,8 +3,10 @@
 #
 # Usage:
 #   ./deploy.sh user                  # user-level (symlinks, auto-update)
-#   ./deploy.sh project <path>        # project-level (copies, committed to git)
+#   ./deploy.sh project <path>        # project-level (copies + git commit)
 #   ./deploy.sh project <path> --dry  # dry run
+#   ./deploy.sh all-projects          # ~/ws 전체 프로젝트에 배포 + git commit
+#   ./deploy.sh all-projects --dry    # dry run
 
 set -euo pipefail
 
@@ -98,6 +100,28 @@ deploy_opencode_project() {
   done
 }
 
+# ── git commit (touched paths only, skip if no changes) ─────────────────────
+
+_git_commit() {
+  local proj="$1"
+  local prev_dir="$PWD"
+  cd "$proj"
+
+  git add ".claude/commands" ".claude/scripts" 2>/dev/null || true
+  [[ -f "opencode.jsonc" || -d ".opencode" ]] && git add ".opencode/command" 2>/dev/null || true
+
+  if git diff --cached --quiet; then
+    skip "변경 없음 — commit skip"
+    cd "$prev_dir"
+    return 1
+  fi
+
+  git commit -m "chore: sync shared commands from alxdr3k/my-skill"
+  ok "committed"
+  cd "$prev_dir"
+  return 0
+}
+
 # ── entrypoint ────────────────────────────────────────────────────────────────
 
 case "${1:-help}" in
@@ -122,8 +146,32 @@ case "${1:-help}" in
     $DRY && echo "(dry run)"
     deploy_claude_project "$proj"
     deploy_opencode_project "$proj"
+    if ! $DRY; then
+      _git_commit "$proj"
+    fi
+    ;;
+  all-projects)
+    $DRY && echo "(dry run)"
+    updated=0; unchanged=0
+    # .claude/commands/ 와 .git/ 이 모두 있는 프로젝트를 depth 3까지 탐색
+    while IFS= read -r proj; do
+      [[ "$proj" == "$REPO" ]] && continue          # my-skill 자신 제외
+      [[ ! -d "$proj/.git" ]] && continue           # git repo 아니면 skip
+      [[ ! -d "$proj/.claude/commands" ]] && continue  # commands 없으면 skip
+      echo ""
+      log "프로젝트: $(basename "$proj")"
+      deploy_claude_project "$proj"
+      deploy_opencode_project "$proj"
+      if ! $DRY; then
+        if _git_commit "$proj"; then
+          (( updated++ )) || true
+        else
+          (( unchanged++ )) || true
+        fi
+      fi
+    done < <(find "$HOME/ws" -maxdepth 3 -name ".claude" -type d -exec dirname {} \; | sort -u)
     echo ""
-    echo "완료. 변경된 파일을 git add 후 커밋하세요."
+    $DRY || echo "완료: ${updated}개 업데이트, ${unchanged}개 변경 없음"
     ;;
   list)
     echo "=== commands/ ==="
@@ -142,8 +190,10 @@ case "${1:-help}" in
     cat <<EOF
 사용법:
   $0 user                       유저 레벨 배포 (symlink, 수정 즉시 반영)
-  $0 project <path>             프로젝트 레벨 배포 (copy, git commit 가능)
+  $0 project <path>             프로젝트 레벨 배포 + git commit
   $0 project <path> --dry       dry run
+  $0 all-projects               ~/ws 전체 프로젝트 배포 + git commit
+  $0 all-projects --dry         dry run
   $0 list                       현재 커맨드 목록 및 배포 현황
 
 지원 에이전트:
