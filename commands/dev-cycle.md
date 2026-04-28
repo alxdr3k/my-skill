@@ -28,6 +28,14 @@ git fetch origin
 git pull origin main
 ```
 
+**Standard 리포:** dev 브랜치도 최신화한다.
+
+```bash
+git checkout dev
+git pull origin dev
+git checkout -  # 원래 브랜치로 복귀
+```
+
 ---
 
 ## Phase 2 — 문서 정합성 감사 (codex:rescue 위임)
