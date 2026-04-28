@@ -85,6 +85,8 @@ deploy_claude_project() {
     _copy "$f" "$proj/.claude/scripts/$(basename "$f")"
     $DRY || chmod +x "$proj/.claude/scripts/$(basename "$f")"
   done
+  # direct-push repo 목록
+  _copy "$REPO/direct-push-repos.txt" "$proj/.claude/direct-push-repos.txt"
 }
 
 deploy_opencode_project() {
