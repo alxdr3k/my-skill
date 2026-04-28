@@ -118,6 +118,10 @@ _git_commit() {
 
   git commit -m "chore: sync shared commands from alxdr3k/my-skill"
   ok "committed"
+  git push 2>/dev/null && ok "pushed" || {
+    # 트래킹 브랜치 없으면 upstream 설정 후 push
+    git push --set-upstream origin "$(git branch --show-current)" && ok "pushed (upstream set)"
+  }
   cd "$prev_dir"
   return 0
 }
