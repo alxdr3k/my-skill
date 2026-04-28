@@ -68,20 +68,45 @@ deploy_codex_user() {
 }
 
 _copy_codex_skills_to() {
-  local dest="$1" proj="$2"
+  local dest="$1" repo_name="$2"
   log "Codex skills  $dest/.codex/skills/"
   for f in "$CMDS"/*.md; do
-    name="$(basename "$f" .md)"
-    _copy "$f" "$dest/.codex/skills/$name/SKILL.md"
+    local name; name="$(basename "$f" .md)"
+    if _in_scope "$f" "$repo_name"; then
+      _copy "$f" "$dest/.codex/skills/$name/SKILL.md"
+    else
+      $DRY || rm -rf "$dest/.codex/skills/$name"
+      skip "$name skill — projects scope 밖 ($repo_name)"
+    fi
   done
+}
+
+# ── projects: 필드 필터 ───────────────────────────────────────────────────────
+# 반환값: 0=배포, 1=스킵(제거 대상)
+
+_in_scope() {
+  local cmd_file="$1" repo_name="$2"
+  local projects_line
+  projects_line=$(awk '/^---/{c++;next} c==1 && /^projects:/{print;exit}' "$cmd_file")
+  [[ -z "$projects_line" ]] && return 0          # projects: 없음 → 전체 배포
+  echo "$projects_line" | grep -q "\b${repo_name}\b" && return 0  # 포함됨
+  return 1                                        # 스코프 밖
 }
 
 # ── copy files to a destination path ─────────────────────────────────────────
 
 _copy_claude_to() {
-  local dest="$1"
+  local dest="$1" repo_name="$2"
   log "Claude  $dest/.claude/"
-  for f in "$CMDS"/*.md; do _copy "$f" "$dest/.claude/commands/$(basename "$f")"; done
+  for f in "$CMDS"/*.md; do
+    local fname; fname="$(basename "$f")"
+    if _in_scope "$f" "$repo_name"; then
+      _copy "$f" "$dest/.claude/commands/$fname"
+    else
+      $DRY || rm -f "$dest/.claude/commands/$fname"
+      skip "$fname — projects scope 밖 ($repo_name)"
+    fi
+  done
   for f in "$SCRIPTS"/*; do
     _copy "$f" "$dest/.claude/scripts/$(basename "$f")"
     $DRY || chmod +x "$dest/.claude/scripts/$(basename "$f")"
@@ -131,9 +156,9 @@ _git_deploy() {
   git -C "$proj" branch -D "$branch" "$merge_branch" 2>/dev/null || true
 
   if $DRY; then
-    _copy_claude_to "$proj"
+    _copy_claude_to "$proj" "$repo_name"
     _copy_opencode_to "$proj" "$proj"
-    _copy_codex_skills_to "$proj" "$proj"
+    _copy_codex_skills_to "$proj" "$repo_name"
     ok "[dry] would commit + push + squash merge → $base"
     return 0
   fi
@@ -144,9 +169,9 @@ _git_deploy() {
   git -C "$wt_branch" checkout -b "$branch" -q
 
   # 파일 복사 (worktree로)
-  _copy_claude_to "$wt_branch"
+  _copy_claude_to "$wt_branch" "$repo_name"
   _copy_opencode_to "$wt_branch" "$proj"
-  _copy_codex_skills_to "$wt_branch" "$proj"
+  _copy_codex_skills_to "$wt_branch" "$repo_name"
 
   # 프로젝트에 잘못 배포된 direct-push-repos.txt 제거
   rm -f "$wt_branch/.claude/direct-push-repos.txt"
@@ -181,9 +206,9 @@ _git_deploy() {
   git -C "$proj" clean -f ".claude/commands/" ".claude/scripts/" 2>/dev/null || true
   git -C "$proj" pull --ff-only -q 2>/dev/null || true
   # pull 후에도 없는 파일은 로컬 복사 (e.g. 로컬이 feature 브랜치인 경우)
-  _copy_claude_to "$proj"
+  _copy_claude_to "$proj" "$repo_name"
   _copy_opencode_to "$proj" "$proj"
-  _copy_codex_skills_to "$proj" "$proj"
+  _copy_codex_skills_to "$proj" "$repo_name"
   rm -f "$proj/.claude/direct-push-repos.txt"
   ok "local synced"
 
