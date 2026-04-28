@@ -3,9 +3,9 @@
 #
 # Usage:
 #   ./deploy.sh user                  # user-level (symlinks, auto-update)
-#   ./deploy.sh project <path>        # project-level (copies + git commit)
+#   ./deploy.sh project <path>        # project-level (worktree + git commit + push)
 #   ./deploy.sh project <path> --dry  # dry run
-#   ./deploy.sh all-projects          # ~/ws 전체 프로젝트에 배포 + git commit
+#   ./deploy.sh all-projects          # ~/ws 전체 프로젝트에 배포
 #   ./deploy.sh all-projects --dry    # dry run
 
 set -euo pipefail
@@ -24,17 +24,17 @@ err()  { echo -e "${RED}✗${NC} $*"; }
 DRY=false
 [[ "${*}" == *"--dry"* ]] && DRY=true
 
-_link() {   # _link src dst
+_link() {
   local src="$1" dst="$2"
-  $DRY && { ok "[dry] symlink $dst → $src"; return; }
+  $DRY && { ok "[dry] symlink $(basename "$dst")"; return; }
   mkdir -p "$(dirname "$dst")"
   ln -sf "$src" "$dst"
   ok "$(basename "$dst") → symlink"
 }
 
-_copy() {   # _copy src dst
+_copy() {
   local src="$1" dst="$2"
-  $DRY && { ok "[dry] copy $dst"; return; }
+  $DRY && { ok "[dry] copy $(basename "$dst")"; return; }
   mkdir -p "$(dirname "$dst")"
   cp "$src" "$dst"
   ok "$(basename "$dst") → copied"
@@ -44,127 +44,123 @@ _copy() {   # _copy src dst
 
 deploy_claude_user() {
   log "Claude  ~/.claude/commands/"
-  for f in "$CMDS"/*.md; do
-    _link "$f" "$HOME/.claude/commands/$(basename "$f")"
-  done
+  for f in "$CMDS"/*.md; do _link "$f" "$HOME/.claude/commands/$(basename "$f")"; done
 }
 
 deploy_opencode_user() {
-  if [[ ! -d "$HOME/.opencode" ]]; then
-    skip "opencode: ~/.opencode 없음 — skip"
-    return
-  fi
+  if [[ ! -d "$HOME/.opencode" ]]; then skip "opencode: ~/.opencode 없음 — skip"; return; fi
   log "opencode  ~/.opencode/command/"
-  for f in "$CMDS"/*.md; do
-    _link "$f" "$HOME/.opencode/command/$(basename "$f")"
-  done
+  for f in "$CMDS"/*.md; do _link "$f" "$HOME/.opencode/command/$(basename "$f")"; done
 }
 
 deploy_codex_user() {
-  if [[ ! -d "$HOME/.codex" ]]; then
-    skip "Codex: ~/.codex 없음 — skip"
-    return
-  fi
+  if [[ ! -d "$HOME/.codex" ]]; then skip "Codex: ~/.codex 없음 — skip"; return; fi
   log "Codex  ~/.codex/rules/default.rules"
   $DRY && { ok "[dry] copy default.rules"; return; }
   cp "$CODEX_RULES" "$HOME/.codex/rules/default.rules"
   ok "default.rules → copied"
 }
 
-# ── project-level (copies so commands are committed & available on mobile) ───
+# ── copy files to a destination path ─────────────────────────────────────────
 
-deploy_claude_project() {
-  local proj="$1"
-  log "Claude  $proj/.claude/commands/"
-  for f in "$CMDS"/*.md; do
-    _copy "$f" "$proj/.claude/commands/$(basename "$f")"
-  done
-  # scripts (referenced by codex-loop.md)
-  log "Claude  $proj/.claude/scripts/"
+_copy_claude_to() {
+  local dest="$1"
+  log "Claude  $dest/.claude/"
+  for f in "$CMDS"/*.md; do _copy "$f" "$dest/.claude/commands/$(basename "$f")"; done
   for f in "$SCRIPTS"/*; do
-    _copy "$f" "$proj/.claude/scripts/$(basename "$f")"
-    $DRY || chmod +x "$proj/.claude/scripts/$(basename "$f")"
+    _copy "$f" "$dest/.claude/scripts/$(basename "$f")"
+    $DRY || chmod +x "$dest/.claude/scripts/$(basename "$f")"
   done
-  # direct-push repo 목록
-  _copy "$REPO/direct-push-repos.txt" "$proj/.claude/direct-push-repos.txt"
+  _copy "$REPO/direct-push-repos.txt" "$dest/.claude/direct-push-repos.txt"
 }
 
-deploy_opencode_project() {
-  local proj="$1"
-  # opencode 프로젝트인지 확인
+_copy_opencode_to() {
+  local dest="$1" proj="$2"
   if [[ ! -f "$proj/opencode.jsonc" && ! -d "$proj/.opencode" ]]; then
-    skip "opencode: $proj 는 opencode 프로젝트 아님 — skip"
+    skip "opencode: $(basename "$proj") 는 opencode 프로젝트 아님 — skip"
     return
   fi
-  log "opencode  $proj/.opencode/command/"
-  for f in "$CMDS"/*.md; do
-    _copy "$f" "$proj/.opencode/command/$(basename "$f")"
-  done
+  log "opencode  $dest/.opencode/command/"
+  for f in "$CMDS"/*.md; do _copy "$f" "$dest/.opencode/command/$(basename "$f")"; done
 }
 
-# ── git: branch → commit → push → merge → push base ─────────────────────────
+# ── base branch detection ─────────────────────────────────────────────────────
 
-_git_commit() {
+_base_branch() {
   local proj="$1"
-  local prev_dir="$PWD"
-  cd "$proj"
-
-  # base 브랜치 결정: Direct-push 리포는 main, 그 외 dev > main 순
-  local base
   local repo_name
   repo_name="$(basename "$proj")"
   if grep -qxF "$repo_name" "$REPO/direct-push-repos.txt" 2>/dev/null; then
-    base="main"
-  elif git show-ref --verify --quiet refs/heads/dev; then
-    base="dev"
+    echo "main"
+  elif git -C "$proj" show-ref --verify --quiet refs/heads/dev; then
+    echo "dev"
   else
-    base="main"
+    echo "main"
+  fi
+}
+
+# ── git: worktree → commit → push → squash merge base → push ─────────────────
+
+_git_deploy() {
+  local proj="$1"
+  local repo_name base
+  repo_name="$(basename "$proj")"
+  base="$(_base_branch "$proj")"
+
+  local branch="chore/sync-commands"
+  local wt_branch="/tmp/my-skill-${repo_name}-branch"
+  local wt_base="/tmp/my-skill-${repo_name}-base"
+
+  # 잔여 worktree/branch 정리
+  git -C "$proj" worktree remove "$wt_branch" --force 2>/dev/null || true
+  git -C "$proj" worktree remove "$wt_base"   --force 2>/dev/null || true
+  rm -rf "$wt_branch" "$wt_base"
+  git -C "$proj" branch -D "$branch" 2>/dev/null || true
+
+  if $DRY; then
+    _copy_claude_to "$proj"
+    _copy_opencode_to "$proj" "$proj"
+    ok "[dry] would commit + push + squash merge → $base"
+    return 0
   fi
 
-  local orig_branch
-  orig_branch="$(git branch --show-current)"
+  # sync 브랜치 worktree 생성
+  git -C "$proj" worktree add "$wt_branch" "$base" -q
+  git -C "$wt_branch" checkout -b "$branch" -q
 
-  # base로 이동
-  git checkout "$base" -q
+  # 파일 복사 (worktree로)
+  _copy_claude_to "$wt_branch"
+  _copy_opencode_to "$wt_branch" "$proj"
 
-  # 작업 브랜치 생성 (이미 있으면 삭제 후 재생성)
-  local branch="chore/sync-commands"
-  git branch -D "$branch" 2>/dev/null || true
-  git checkout -b "$branch" -q
+  # stage
+  git -C "$wt_branch" add ".claude" 2>/dev/null || true
+  git -C "$wt_branch" add ".opencode" 2>/dev/null || true
 
-  # 파일 복사는 이미 완료된 상태 — stage
-  git add ".claude/commands" ".claude/scripts" 2>/dev/null || true
-  [[ -f "opencode.jsonc" || -d ".opencode" ]] && git add ".opencode/command" 2>/dev/null || true
-
-  if git diff --cached --quiet; then
+  if git -C "$wt_branch" diff --cached --quiet; then
     skip "변경 없음 — skip"
-    git checkout "$orig_branch" -q
-    git branch -D "$branch" 2>/dev/null || true
-    cd "$prev_dir"
+    git -C "$proj" worktree remove "$wt_branch" --force; rm -rf "$wt_branch"
     return 1
   fi
 
-  git commit -m "chore: sync shared commands from alxdr3k/my-skill"
+  git -C "$wt_branch" commit -m "chore: sync shared commands from alxdr3k/my-skill" -q
   ok "committed on $branch"
-
-  git push --set-upstream origin "$branch" -q
+  git -C "$wt_branch" push --set-upstream origin "$branch" -q
   ok "pushed $branch"
 
-  # base에 squash merge 후 push
-  git checkout "$base" -q
-  git merge --squash "$branch" -q
-  git commit -m "chore: sync shared commands from alxdr3k/my-skill"
-  git push origin "$base" -q
+  # base worktree에서 squash merge (main worktree 건드리지 않음)
+  git -C "$proj" worktree add "$wt_base" "$base" -q
+  git -C "$wt_base" merge --squash "$branch" -q
+  git -C "$wt_base" commit -m "chore: sync shared commands from alxdr3k/my-skill" -q
+  git -C "$wt_base" push origin "$base" -q
   ok "merged → $base, pushed"
 
-  # 작업 브랜치 정리
-  git branch -D "$branch"
-  git push origin --delete "$branch" -q 2>/dev/null || true
+  # worktree 및 브랜치 정리
+  git -C "$proj" worktree remove "$wt_branch" --force
+  git -C "$proj" worktree remove "$wt_base"   --force
+  rm -rf "$wt_branch" "$wt_base"
+  git -C "$proj" branch -D "$branch" 2>/dev/null || true
+  git -C "$proj" push origin --delete "$branch" -q 2>/dev/null || true
 
-  # 원래 브랜치 복원 (base와 다를 경우)
-  [[ "$orig_branch" != "$base" ]] && git checkout "$orig_branch" -q || true
-
-  cd "$prev_dir"
   return 0
 }
 
@@ -180,40 +176,25 @@ case "${1:-help}" in
     echo "완료. 이후 commands/ 수정 시 symlink로 자동 반영됩니다."
     ;;
   project)
-    if [[ -z "${2:-}" ]]; then
-      err "Usage: $0 project <path> [--dry]"
-      exit 1
-    fi
-    proj="${2%/}"   # trailing slash 제거
-    if [[ ! -d "$proj" ]]; then
-      err "디렉토리 없음: $proj"
-      exit 1
-    fi
+    if [[ -z "${2:-}" ]]; then err "Usage: $0 project <path> [--dry]"; exit 1; fi
+    proj="${2%/}"
+    [[ ! -d "$proj" ]] && { err "디렉토리 없음: $proj"; exit 1; }
     $DRY && echo "(dry run)"
-    deploy_claude_project "$proj"
-    deploy_opencode_project "$proj"
-    if ! $DRY; then
-      _git_commit "$proj"
-    fi
+    _git_deploy "$proj"
     ;;
   all-projects)
     $DRY && echo "(dry run)"
     updated=0; unchanged=0
-    # .claude/commands/ 와 .git/ 이 모두 있는 프로젝트를 depth 3까지 탐색
     while IFS= read -r proj; do
-      [[ "$proj" == "$REPO" ]] && continue          # my-skill 자신 제외
-      [[ ! -d "$proj/.git" ]] && continue           # git repo 아니면 skip
-      [[ ! -d "$proj/.claude/commands" ]] && continue  # commands 없으면 skip
+      [[ "$proj" == "$REPO" ]] && continue
+      [[ ! -d "$proj/.git" ]] && continue
+      [[ ! -d "$proj/.claude/commands" ]] && continue
       echo ""
       log "프로젝트: $(basename "$proj")"
-      deploy_claude_project "$proj"
-      deploy_opencode_project "$proj"
-      if ! $DRY; then
-        if _git_commit "$proj"; then
-          (( updated++ )) || true
-        else
-          (( unchanged++ )) || true
-        fi
+      if _git_deploy "$proj"; then
+        (( updated++ )) || true
+      else
+        (( unchanged++ )) || true
       fi
     done < <(find "$HOME/ws" -maxdepth 3 -name ".claude" -type d -exec dirname {} \; | sort -u)
     echo ""
@@ -236,9 +217,9 @@ case "${1:-help}" in
     cat <<EOF
 사용법:
   $0 user                       유저 레벨 배포 (symlink, 수정 즉시 반영)
-  $0 project <path>             프로젝트 레벨 배포 + git commit
+  $0 project <path>             프로젝트 레벨 배포 (worktree + commit + push)
   $0 project <path> --dry       dry run
-  $0 all-projects               ~/ws 전체 프로젝트 배포 + git commit
+  $0 all-projects               ~/ws 전체 프로젝트 배포
   $0 all-projects --dry         dry run
   $0 list                       현재 커맨드 목록 및 배포 현황
 
