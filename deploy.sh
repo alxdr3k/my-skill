@@ -212,6 +212,17 @@ case "${1:-help}" in
     done < <(find "$HOME/ws" -maxdepth 3 -name ".claude" -type d -exec dirname {} \; | sort -u)
     echo ""
     $DRY || echo "완료: ${updated}개 업데이트, ${unchanged}개 변경 없음"
+    $DRY || cat <<'MSG'
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  다른 세션 / 워크트리에서 커맨드를 최신화하려면:
+
+    git fetch origin
+    git checkout origin/main -- .claude/commands/
+
+  (main 대신 dev 기반 워크트리는 origin/dev 사용)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MSG
     ;;
   list)
     echo "=== commands/ ==="
