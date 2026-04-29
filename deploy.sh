@@ -268,10 +268,10 @@ _git_deploy() {
   ok "merged → $base, pushed"
 
   # 로컬 프로젝트 동기화 (agent clients는 로컬 파일 읽음)
-  # untracked 커맨드 파일 정리 후 pull → remote 상태와 일치시킴
+  # 먼저 remote 상태를 fast-forward한 뒤 local fallback copy를 수행한다.
+  git -C "$proj" pull --ff-only -q 2>/dev/null || true
   git -C "$proj" clean -f ".claude/commands/" ".agents/scripts/" 2>/dev/null || true
   rm -rf "$proj/.claude/scripts"
-  git -C "$proj" pull --ff-only -q 2>/dev/null || true
   ensure_local_excludes "$proj"
   # pull 후에도 없는 파일은 로컬 복사 (e.g. 로컬이 feature 브랜치인 경우)
   _copy_claude_to "$proj" "$repo_name"
