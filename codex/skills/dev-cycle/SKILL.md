@@ -116,7 +116,11 @@ REVIEW_BASE="$("$DEV_CYCLE_HELPER" review-base)"
 
 - Direct-push repo: local diff, staged diff, untracked files, 또는 unpublished `origin/main...HEAD`를 리뷰한다.
 - Standard repo: `$REVIEW_BASE...HEAD` 기준으로 리뷰한다.
-- 버그, regression, missing test, security/auth/data-loss, schema/runtime/docs 불일치를 findings first로 확인한다.
+- Review Pass는 diff review와 impact triage/scan이 함께 통과한 상태다. impact scan을 review OK 이후 별도 단계로 두지 않는다.
+- Impact triage: docs/typo/leaf/test-only처럼 외부 surface가 없으면 `Impact: local only`로 끝낸다.
+- 위험 trigger: shared helper/API, command/skill, deploy/build/test infra, config/env/schema, persistence, auth/security, public CLI/output, 파일 경로/계약 변경, 변경 파일 5개 초과. 해당하면 변경된 symbol/path/env/command를 `rg`로 repo 전체에서 추적해 call site/docs/tests/deploy refs를 확인한다.
+- 버그, regression, missing test, security/auth/data-loss, schema/runtime/docs 불일치 findings를 batch로 정리한다. actionable finding은 같은 cycle에서 한 번에 수정하고 targeted verify 후 Review Pass를 반복한다.
+- fix가 surface를 넓히지 않았으면 다음 pass는 추가 diff 중심으로 본다.
 - 최대 5회 반복한다. 5회 후 남은 actionable finding은 GitHub issue로 남기고 Step 7로 간다.
 
 ## Step 7 - Local Checks
