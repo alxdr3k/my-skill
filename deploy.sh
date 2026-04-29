@@ -56,6 +56,9 @@ _codex_skill_source() {
 deploy_claude_user() {
   log "Claude  ~/.claude/commands/"
   for f in "$CMDS"/*.md; do _link "$f" "$HOME/.claude/commands/$(basename "$f")"; done
+  log "Claude  ~/.claude/scripts/"
+  for f in "$SCRIPTS"/*; do _link "$f" "$HOME/.claude/scripts/$(basename "$f")"; done
+  _link "$REPO/direct-push-repos.txt" "$HOME/.claude/scripts/direct-push-repos.txt"
 }
 
 deploy_opencode_user() {
@@ -136,6 +139,7 @@ _copy_claude_to() {
     _copy "$f" "$dest/.claude/scripts/$(basename "$f")"
     $DRY || chmod +x "$dest/.claude/scripts/$(basename "$f")"
   done
+  _copy "$REPO/direct-push-repos.txt" "$dest/.claude/scripts/direct-push-repos.txt"
 }
 
 _copy_opencode_to() {
