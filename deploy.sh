@@ -430,7 +430,8 @@ MSG
 
 옵션:
   --migrate-codex-skills        기존 직접 수정된 .codex/skills/*/SKILL.md를
-                                .codex/skill-overrides/*.md 기반 generated 파일로 전환
+                                generated 파일로 전환
+                                repo별 차이는 먼저 .codex/skill-overrides/*.md로 분리
 
 지원 에이전트:
   Claude Code   ~/.claude/commands/  /  .claude/commands/
