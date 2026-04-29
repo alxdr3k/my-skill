@@ -39,7 +39,7 @@ bash "$CODEX_REVIEW_HELPER"
 | ---- | ---- | --------- |
 | 0 | Codex pass reaction 감지 | checks 확인 후 PR merge |
 | 1 | 새 comment/review가 stdout에 출력됨 | 분석 -> 수정 -> commit -> push -> 스크립트 재실행 |
-| 2 | timeout | 사용자에게 타임아웃 보고 |
+| 2 | 두 번째 timeout | loop 종료, 사용자에게 타임아웃 보고 |
 | 3 | PR 감지 실패 | PR 번호 또는 URL 요청 후 스크립트 인자로 재실행 |
 | 4 | 영구 API 오류 | 인증/권한 문제 보고 |
 
@@ -47,6 +47,10 @@ bash "$CODEX_REVIEW_HELPER"
 `CODEX_INITIAL_EMPTY_DELAY`초, 기본 300초를 쉰 뒤 기존 `CODEX_POLL_INTERVAL`로
 계속 조회한다. PR 생성 직후 Codex/GitHub 쪽 초기 처리 지연 때문에 빈 PR을 너무 촘촘하게
 polling하지 않기 위한 동작이다.
+
+첫 timeout도 helper가 내부에서 한 번 처리한다. helper는 PR에 `@codex review` comment를
+남긴 뒤 한 번 더 polling한다. 이 재요청 comment 자체는 새 feedback으로 처리하지 않는다.
+두 번째 timeout이면 exit 2로 종료한다. 이때는 추가 comment를 남기지 않고 loop를 끝낸다.
 
 인자 형식:
 
