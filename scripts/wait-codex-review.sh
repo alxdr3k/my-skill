@@ -4,9 +4,7 @@
 # Polls three feedback sources (issue comments, review submissions including
 # state-only APPROVED/CHANGES_REQUESTED, inline review comments) and a pass
 # reaction on the PR. Exits as soon as the pass reaction (newer than baseline)
-# is observed, or when any new feedback is present. On the first timeout it
-# leaves a "@codex review" issue comment and polls once more; the second timeout
-# exits 2.
+# is observed, or when any new feedback is present, or on timeout.
 #
 # Baseline = best-effort push timestamp:
 #   1. GitHub Events API PushEvent.created_at (most accurate; works for own
@@ -20,7 +18,7 @@
 # Exit codes:
 #   0 → configured actor added the pass reaction (newer than baseline)
 #   1 → at least one new comment/review since baseline (printed to stdout)
-#   2 → timeout reached twice
+#   2 → timeout reached
 #   3 → PR could not be detected
 #   4 → permanent API failure (auth/permissions/missing PR)
 #
@@ -38,9 +36,6 @@
 #   CODEX_PASS_ACTOR     exact GitHub login that signals pass via reaction
 #                        (default: chatgpt-codex-connector[bot])
 #   CODEX_PASS_REACTION  GitHub reaction content (default: +1, i.e. 👍)
-#   CODEX_REVIEW_REQUEST_BODY
-#                        issue comment body posted after first timeout
-#                        (default: @codex review)
 
 set -euo pipefail
 
@@ -79,7 +74,6 @@ timeout="${CODEX_POLL_TIMEOUT:-600}"
 initial_empty_delay="${CODEX_INITIAL_EMPTY_DELAY:-300}"
 pass_actor="${CODEX_PASS_ACTOR:-chatgpt-codex-connector[bot]}"
 pass_reaction="${CODEX_PASS_REACTION:-+1}"
-review_request_body="${CODEX_REVIEW_REQUEST_BODY:-@codex review}"
 fetch_failures="$(mktemp)"
 trap 'rm -f "$fetch_failures"' EXIT
 
@@ -175,7 +169,6 @@ echo "→ polling PR $repo#$pr (interval=${interval}s, timeout=${timeout}s, pass
 last_fetched_baseline=""
 last_clamped_baseline=""
 first_activity_probe=1
-timeout_count=0
 
 started=$(date +%s)
 while :; do
@@ -183,21 +176,8 @@ while :; do
 
   now=$(date +%s)
   if [ $((now - started)) -ge "$timeout" ]; then
-    timeout_count=$((timeout_count + 1))
-    if [ "$timeout_count" -ge 2 ]; then
-      echo "TIMEOUT after ${timeout_count} polling windows" >&2
-      exit 2
-    fi
-
-    echo "TIMEOUT; posting review request comment and polling once more" >&2
-    if ! gh api "repos/$repo/issues/$pr/comments" \
-      -f body="$review_request_body" >/dev/null; then
-      echo "ERROR: failed to post review request comment after timeout" >&2
-      exit 4
-    fi
-    first_activity_probe=1
-    started=$(date +%s)
-    continue
+    echo "TIMEOUT" >&2
+    exit 2
   fi
 
   if [ -n "${CODEX_BASELINE:-}" ]; then
@@ -242,9 +222,9 @@ while :; do
   rv=$(fetch_list_or_empty "reviews"         "repos/$repo/pulls/$pr/reviews")
   rc=$(fetch_list_or_empty "review_comments" "repos/$repo/pulls/$pr/comments")
 
-  new_items=$(jq -n --arg base "$baseline" --arg request_body "$review_request_body" \
+  new_items=$(jq -n --arg base "$baseline" \
     --argjson ic "$ic" --argjson rv "$rv" --argjson rc "$rc" '
-    ($ic | [.[] | select(.created_at > $base) | select(.body != $request_body) | {kind:"issue_comment", at:.created_at, login:.user.login, body:.body, state:""}])
+    ($ic | [.[] | select(.created_at > $base) | {kind:"issue_comment", at:.created_at, login:.user.login, body:.body, state:""}])
     + ($rv | [.[] | select((.submitted_at // "") > $base) | {kind:"review", at:.submitted_at, login:.user.login, body:(.body // ""), state:(.state // "")}])
     + ($rc | [.[] | select(.created_at > $base) | {kind:"review_comment", at:.created_at, login:.user.login, path:.path, line:(.line // .original_line), body:.body, state:""}])
     | sort_by(.at)')
