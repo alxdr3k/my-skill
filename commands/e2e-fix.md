@@ -27,6 +27,7 @@ gh run view <run-id> --repo <owner>/<repo> --log-failed 2>&1 | tail -150
 ### 2단계: Codex에게 수정 위임
 
 `/codex:rescue` 로 위임. 프롬프트에 반드시 포함:
+- Codex에게 전달하는 프롬프트는 영어로 작성
 - 브랜치명 및 워크트리 경로 (있으면)
 - CI 실패 로그 전문
 - 앱 소스(`app/views/`, `app/controllers/` 등)에서 확인한 실제 텍스트·셀렉터
