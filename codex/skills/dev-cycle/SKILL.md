@@ -42,9 +42,10 @@ eval "$("$DEV_CYCLE_HELPER" init-brief)"
 
 검증 실패 또는 확신이 없으면 새 실행으로 보고 `init-brief`를 다시 실행한다. 단, cycle 종료 시점의 누락된 환경변수를 복구하려고 `init-brief`를 다시 실행하지 않는다. 그것은 새 brief log를 시작한다.
 
-Cycle 종료 시 아래 값을 채워 helper로 brief를 출력하고 append한다. **ALL CLEAR, blocked, publish 금지로 종료하는 경우도 먼저 `finish-cycle`을 실행한다.** `Risk`가 비어 있지 않으면 helper가 GitHub issue를 만들고 issue URL을 brief에 기록한다. issue 생성에 실패하면 helper가 `blocked` brief를 append하고 중단한다.
+Cycle 종료 시 아래 값을 채워 helper로 brief를 출력하고 append한다. **ALL CLEAR, blocked, publish 금지로 종료하는 경우도 먼저 `finish-cycle`을 실행한다.** `Risk`가 비어 있지 않으면 helper가 GitHub issue를 만들고 issue URL을 brief에 기록한다. issue 생성에 실패해도 이미 결정된 `DEV_CYCLE_RESULT`를 바꾸지 않는다. helper는 issue 생성 실패와 next action을 `Risk`/`Review/Ship`에 기록하고 brief를 append한다.
 
 `finish-cycle`의 stdout은 tool output일 뿐 사용자에게 자동 전달되지 않는다. 따라서 `finish-cycle` 직후, 다음 `update_plan`, Step 1, Step 2, discovery, 파일 탐색, 또는 tool call을 하기 전에 helper가 출력한 brief를 사용자에게 별도 메시지로 그대로 전달한다. 이 메시지는 `Cycle <N> 브리핑` 제목과 helper stdout의 `Result`, `Work`, `Verification`, `Review/Ship`, `Risk` 항목을 포함해야 한다. 한 줄짜리 "Cycle N 완료" 요약으로 대체하면 안 된다. `--loop` 또는 `--loop N`이면 이 사용자-visible brief를 보낸 뒤에만 다음 cycle로 간다.
+`.dev-cycle/dev-cycle-briefs.md`는 helper가 관리하는 append-only state다. cycle 결과를 고치려고 이 파일을 직접 편집하지 않는다. 특히 issue 생성 실패를 숨기려고 남은 risk를 `없음`으로 바꾸면 안 된다.
 
 ```bash
 DEV_CYCLE_CYCLE=<N> \
