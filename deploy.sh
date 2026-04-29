@@ -7,8 +7,10 @@
 #   ./deploy.sh project <path>        # project-level (worktree + git commit + push)
 #   ./deploy.sh project <path> --dry  # dry run
 #   ./deploy.sh project <path> --clean-legacy-scripts
+#   ./deploy.sh project <path> --migrate-codex-skills
 #   ./deploy.sh all-projects          # ~/ws 전체 프로젝트에 배포
 #   ./deploy.sh all-projects --dry    # dry run
+#   ./deploy.sh all-projects --migrate-codex-skills
 
 set -euo pipefail
 
@@ -17,6 +19,7 @@ CMDS="$REPO/commands"
 SCRIPTS="$REPO/scripts"
 CODEX_RULES="$REPO/codex/rules/default.rules"
 CODEX_SKILLS="$REPO/codex/skills"
+CODEX_SKILL_RENDERER="$SCRIPTS/render-codex-skill.sh"
 
 GRN='\033[0;32m'; BLU='\033[0;34m'; YLW='\033[1;33m'; RED='\033[0;31m'; NC='\033[0m'
 log()  { echo -e "${BLU}→${NC} $*"; }
@@ -28,6 +31,8 @@ DRY=false
 [[ "${*}" == *"--dry"* ]] && DRY=true
 CLEAN_LEGACY_SCRIPTS=false
 [[ "${*}" == *"--clean-legacy-scripts"* ]] && CLEAN_LEGACY_SCRIPTS=true
+MIGRATE_CODEX_SKILLS=false
+[[ "${*}" == *"--migrate-codex-skills"* ]] && MIGRATE_CODEX_SKILLS=true
 
 _link() {
   local src="$1" dst="$2"
@@ -52,6 +57,15 @@ _codex_skill_source() {
     echo "$override"
   else
     echo "$fallback"
+  fi
+}
+
+_render_codex_skill() {
+  local name="$1" base="$2" dest="$3"
+  if $MIGRATE_CODEX_SKILLS; then
+    MY_SKILL_MIGRATE_CODEX_SKILLS=1 "$CODEX_SKILL_RENDERER" "$name" "$base" "$dest"
+  else
+    "$CODEX_SKILL_RENDERER" "$name" "$base" "$dest"
   fi
 }
 
@@ -106,9 +120,23 @@ _copy_codex_skills_to() {
   local dest="$1" repo_name="$2"
   log "Codex skills  $dest/.codex/skills/"
   for f in "$CMDS"/*.md; do
-    local name; name="$(basename "$f" .md)"
+    local name base target tmp; name="$(basename "$f" .md)"
     if _in_scope "$f" "$repo_name"; then
-      _copy "$(_codex_skill_source "$name" "$f")" "$dest/.codex/skills/$name/SKILL.md"
+      base="$(_codex_skill_source "$name" "$f")"
+      target="$dest/.codex/skills/$name/SKILL.md"
+      if $DRY; then
+        _render_codex_skill "$name" "$base" "$dest" >/dev/null
+        ok "[dry] render $name skill"
+      else
+        mkdir -p "$(dirname "$target")"
+        tmp="$(mktemp)"
+        if ! _render_codex_skill "$name" "$base" "$dest" > "$tmp"; then
+          rm -f "$tmp"
+          return 1
+        fi
+        mv "$tmp" "$target"
+        ok "$name skill → rendered"
+      fi
     else
       $DRY || rm -rf "$dest/.codex/skills/$name"
       skip "$name skill — projects scope 밖 ($repo_name)"
@@ -332,7 +360,7 @@ case "${1:-help}" in
     echo "완료. Commands는 각 agent 위치에, shared scripts는 ~/.agents/scripts/에 반영됩니다."
     ;;
   project)
-    if [[ -z "${2:-}" ]]; then err "Usage: $0 project <path> [--dry]"; exit 1; fi
+    if [[ -z "${2:-}" ]]; then err "Usage: $0 project <path> [--dry] [--migrate-codex-skills]"; exit 1; fi
     proj="${2%/}"
     [[ ! -d "$proj" ]] && { err "디렉토리 없음: $proj"; exit 1; }
     $DRY && echo "(dry run)"
@@ -394,9 +422,15 @@ MSG
   $0 project <path>             프로젝트 레벨 배포 (worktree + commit + push)
   $0 project <path> --dry       dry run
   $0 project <path> --clean-legacy-scripts
+  $0 project <path> --migrate-codex-skills
   $0 all-projects               ~/ws 전체 프로젝트 배포
   $0 all-projects --dry         dry run
+  $0 all-projects --migrate-codex-skills
   $0 list                       현재 커맨드 목록 및 배포 현황
+
+옵션:
+  --migrate-codex-skills        기존 직접 수정된 .codex/skills/*/SKILL.md를
+                                .codex/skill-overrides/*.md 기반 generated 파일로 전환
 
 지원 에이전트:
   Claude Code   ~/.claude/commands/  /  .claude/commands/
