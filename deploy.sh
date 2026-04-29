@@ -205,6 +205,35 @@ _base_branch() {
 
 # ── git: worktree → commit → push → squash merge base → push ─────────────────
 
+_managed_paths_clean() {
+  local proj="$1"
+  git -C "$proj" diff --quiet -- .claude .agents .opencode .codex &&
+    git -C "$proj" diff --cached --quiet -- .claude .agents .opencode .codex
+}
+
+_sync_local_after_deploy() {
+  local proj="$1" base="$2"
+  local current
+  current="$(git -C "$proj" branch --show-current)"
+
+  if [[ "$current" != "$base" ]]; then
+    skip "local sync skipped: current branch '$current' != deployed base '$base'"
+    return 0
+  fi
+
+  if ! _managed_paths_clean "$proj"; then
+    skip "local sync skipped: managed paths already dirty"
+    return 0
+  fi
+
+  if git -C "$proj" pull --ff-only origin "$base" -q; then
+    ensure_local_excludes "$proj"
+    ok "local fast-forwarded"
+  else
+    skip "local sync skipped: pull --ff-only failed"
+  fi
+}
+
 _git_deploy() {
   local proj="$1"
   local repo_name base
@@ -227,6 +256,7 @@ _git_deploy() {
     _copy_opencode_to "$proj" "$proj"
     _copy_codex_skills_to "$proj" "$repo_name"
     ok "[dry] would commit + push + squash merge → $base"
+    DEPLOY_RESULT="updated"
     return 0
   fi
 
@@ -255,7 +285,8 @@ _git_deploy() {
   if git -C "$wt_branch" diff --cached --quiet; then
     skip "변경 없음 — skip"
     git -C "$proj" worktree remove "$wt_branch" --force; rm -rf "$wt_branch"
-    return 1
+    DEPLOY_RESULT="unchanged"
+    return 0
   fi
 
   git -C "$wt_branch" commit -m "chore: sync shared commands from alxdr3k/my-skill" -q
@@ -271,20 +302,9 @@ _git_deploy() {
   git -C "$wt_branch" push origin "$merge_branch:$base" -q
   ok "merged → $base, pushed"
 
-  # 로컬 프로젝트 동기화 (agent clients는 로컬 파일 읽음)
-  # 먼저 remote 상태를 fast-forward한 뒤 local fallback copy를 수행한다.
-  git -C "$proj" pull --ff-only -q 2>/dev/null || true
-  git -C "$proj" clean -f ".claude/commands/" ".agents/scripts/" 2>/dev/null || true
-  $CLEAN_LEGACY_SCRIPTS && rm -rf "$proj/.claude/scripts"
-  ensure_local_excludes "$proj"
-  # pull 후에도 없는 파일은 로컬 복사 (e.g. 로컬이 feature 브랜치인 경우)
-  _copy_claude_to "$proj" "$repo_name"
-  _copy_agent_scripts_to "$proj"
-  $CLEAN_LEGACY_SCRIPTS && _remove_legacy_claude_scripts "$proj"
-  _copy_opencode_to "$proj" "$proj"
-  _copy_codex_skills_to "$proj" "$repo_name"
-  rm -f "$proj/.claude/direct-push-repos.txt"
-  ok "local synced"
+  # 로컬 checkout은 안전하게 fast-forward 가능한 경우에만 갱신한다.
+  # feature branch나 behind branch에 파일을 복사하면 tracked/untracked dirty가 남는다.
+  _sync_local_after_deploy "$proj" "$base"
 
   # worktree 및 브랜치 정리
   git -C "$proj" worktree remove "$wt_branch" --force
@@ -292,6 +312,7 @@ _git_deploy() {
   git -C "$proj" branch -D "$branch" "$merge_branch" 2>/dev/null || true
   git -C "$proj" push origin --delete "$branch" -q 2>/dev/null || true
 
+  DEPLOY_RESULT="updated"
   return 0
 }
 
@@ -328,11 +349,13 @@ case "${1:-help}" in
       [[ ! -d "$proj/.claude/commands" ]] && continue
       echo ""
       log "프로젝트: $(basename "$proj")"
-      if _git_deploy "$proj"; then
-        (( updated++ )) || true
-      else
-        (( unchanged++ )) || true
-      fi
+      DEPLOY_RESULT=""
+      _git_deploy "$proj"
+      case "$DEPLOY_RESULT" in
+        updated) (( updated++ )) || true ;;
+        unchanged) (( unchanged++ )) || true ;;
+        *) err "unknown deploy result for $proj"; exit 1 ;;
+      esac
     done < <(find "$HOME/ws" -maxdepth 3 -name ".claude" -type d -exec dirname {} \; | sort -u)
     echo ""
     $DRY || echo "완료: ${updated}개 업데이트, ${unchanged}개 변경 없음"
