@@ -56,9 +56,12 @@ _codex_skill_source() {
 deploy_claude_user() {
   log "Claude  ~/.claude/commands/"
   for f in "$CMDS"/*.md; do _link "$f" "$HOME/.claude/commands/$(basename "$f")"; done
-  log "Claude  ~/.claude/scripts/"
-  for f in "$SCRIPTS"/*; do _link "$f" "$HOME/.claude/scripts/$(basename "$f")"; done
-  _link "$REPO/direct-push-repos.txt" "$HOME/.claude/scripts/direct-push-repos.txt"
+}
+
+deploy_agent_scripts_user() {
+  log "Agent scripts  ~/.agents/scripts/"
+  for f in "$SCRIPTS"/*; do _link "$f" "$HOME/.agents/scripts/$(basename "$f")"; done
+  _link "$REPO/direct-push-repos.txt" "$HOME/.agents/scripts/direct-push-repos.txt"
 }
 
 deploy_opencode_user() {
@@ -125,7 +128,7 @@ _in_scope() {
 
 _copy_claude_to() {
   local dest="$1" repo_name="$2"
-  log "Claude  $dest/.claude/"
+  log "Claude commands  $dest/.claude/commands/"
   for f in "$CMDS"/*.md; do
     local fname; fname="$(basename "$f")"
     if _in_scope "$f" "$repo_name"; then
@@ -135,11 +138,25 @@ _copy_claude_to() {
       skip "$fname — projects scope 밖 ($repo_name)"
     fi
   done
+}
+
+_copy_agent_scripts_to() {
+  local dest="$1"
+  log "Agent scripts  $dest/.agents/scripts/"
   for f in "$SCRIPTS"/*; do
-    _copy "$f" "$dest/.claude/scripts/$(basename "$f")"
-    $DRY || chmod +x "$dest/.claude/scripts/$(basename "$f")"
+    _copy "$f" "$dest/.agents/scripts/$(basename "$f")"
+    $DRY || chmod +x "$dest/.agents/scripts/$(basename "$f")"
   done
-  _copy "$REPO/direct-push-repos.txt" "$dest/.claude/scripts/direct-push-repos.txt"
+  _copy "$REPO/direct-push-repos.txt" "$dest/.agents/scripts/direct-push-repos.txt"
+}
+
+_remove_legacy_claude_scripts() {
+  local dest="$1"
+  if $DRY; then
+    skip "[dry] remove legacy $dest/.claude/scripts/"
+  else
+    rm -rf "$dest/.claude/scripts"
+  fi
 }
 
 _copy_opencode_to() {
@@ -201,6 +218,8 @@ _git_deploy() {
 
   if $DRY; then
     _copy_claude_to "$proj" "$repo_name"
+    _copy_agent_scripts_to "$proj"
+    _remove_legacy_claude_scripts "$proj"
     _copy_opencode_to "$proj" "$proj"
     _copy_codex_skills_to "$proj" "$repo_name"
     ok "[dry] would commit + push + squash merge → $base"
@@ -214,6 +233,8 @@ _git_deploy() {
 
   # 파일 복사 (worktree로)
   _copy_claude_to "$wt_branch" "$repo_name"
+  _copy_agent_scripts_to "$wt_branch"
+  _remove_legacy_claude_scripts "$wt_branch"
   _copy_opencode_to "$wt_branch" "$proj"
   _copy_codex_skills_to "$wt_branch" "$repo_name"
 
@@ -223,6 +244,7 @@ _git_deploy() {
 
   # stage (경로별로 분리 — 없는 경로가 있으면 git add 전체가 fatal로 abort됨)
   git -C "$wt_branch" add ".claude" 2>/dev/null || true
+  git -C "$wt_branch" add ".agents" 2>/dev/null || true
   git -C "$wt_branch" add ".opencode" 2>/dev/null || true
   git -C "$wt_branch" add ".codex" 2>/dev/null || true
 
@@ -245,13 +267,16 @@ _git_deploy() {
   git -C "$wt_branch" push origin "$merge_branch:$base" -q
   ok "merged → $base, pushed"
 
-  # 로컬 프로젝트 동기화 (Claude Code는 로컬 파일 읽음)
+  # 로컬 프로젝트 동기화 (agent clients는 로컬 파일 읽음)
   # untracked 커맨드 파일 정리 후 pull → remote 상태와 일치시킴
-  git -C "$proj" clean -f ".claude/commands/" ".claude/scripts/" 2>/dev/null || true
+  git -C "$proj" clean -f ".claude/commands/" ".agents/scripts/" 2>/dev/null || true
+  rm -rf "$proj/.claude/scripts"
   git -C "$proj" pull --ff-only -q 2>/dev/null || true
   ensure_local_excludes "$proj"
   # pull 후에도 없는 파일은 로컬 복사 (e.g. 로컬이 feature 브랜치인 경우)
   _copy_claude_to "$proj" "$repo_name"
+  _copy_agent_scripts_to "$proj"
+  _remove_legacy_claude_scripts "$proj"
   _copy_opencode_to "$proj" "$proj"
   _copy_codex_skills_to "$proj" "$repo_name"
   rm -f "$proj/.claude/direct-push-repos.txt"
@@ -274,10 +299,11 @@ case "${1:-help}" in
     check_direct_push_repo_lists
     $DRY || ensure_local_excludes "$REPO"
     deploy_claude_user
+    deploy_agent_scripts_user
     deploy_opencode_user
     deploy_codex_user
     echo ""
-    echo "완료. Claude/opencode는 commands/, Codex는 codex/skills override 또는 commands fallback symlink로 자동 반영됩니다."
+    echo "완료. Commands는 각 agent 위치에, shared scripts는 ~/.agents/scripts/에 반영됩니다."
     ;;
   project)
     if [[ -z "${2:-}" ]]; then err "Usage: $0 project <path> [--dry]"; exit 1; fi
@@ -327,6 +353,8 @@ MSG
     echo "=== 배포 현황 ==="
     echo "Claude user:    ~/.claude/commands/"
     ls "$HOME/.claude/commands/" 2>/dev/null | sed 's/^/  /'
+    echo "Agent scripts:  ~/.agents/scripts/"
+    ls "$HOME/.agents/scripts/" 2>/dev/null | sed 's/^/  /' || echo "  (없음)"
     echo "opencode user:  ~/.opencode/command/"
     ls "$HOME/.opencode/command/" 2>/dev/null | sed 's/^/  /' || echo "  (없음)"
     ;;
@@ -342,6 +370,7 @@ MSG
 
 지원 에이전트:
   Claude Code   ~/.claude/commands/  /  .claude/commands/
+  Shared scripts ~/.agents/scripts/   /  .agents/scripts/
   opencode      ~/.opencode/command/ /  .opencode/command/
   Codex CLI     ~/.codex/rules/      (user only)
 EOF

@@ -8,11 +8,15 @@ description: 현재 PR의 codex 리뷰를 기다리고 코멘트 수정 후 push
 ## 핵심 원칙: 대기 사이클마다 foreground script 1회
 
 각 대기 사이클은 `wait-codex-review.sh`를 foreground로 1회 실행해 처리한다.
-스크립트가 내부 polling을 담당하고 종료 시점에 필요한 결과만 반환한다. feedback을
-수정하고 push한 뒤에는 다음 대기 사이클로 보고 스크립트를 다시 실행한다.
+스크립트가 내부 polling을 담당하고 종료 시점에 필요한 결과만 반환한다. GitHub app으로
+즉시 확인 가능한 상태가 있어도 대기/polling은 스크립트에 맡긴다. feedback을 수정하고
+push한 뒤에는 다음 대기 사이클로 보고 스크립트를 다시 실행한다.
 
 ```bash
-bash .claude/scripts/wait-codex-review.sh
+CODEX_REVIEW_HELPER=".agents/scripts/wait-codex-review.sh"
+[ -x "$CODEX_REVIEW_HELPER" ] || CODEX_REVIEW_HELPER="$HOME/.agents/scripts/wait-codex-review.sh"
+[ -x "$CODEX_REVIEW_HELPER" ] || { echo "Missing wait-codex-review.sh"; exit 1; }
+bash "$CODEX_REVIEW_HELPER"
 ```
 
 다음 패턴은 금지한다.
@@ -40,8 +44,8 @@ bash .claude/scripts/wait-codex-review.sh
 인자 형식:
 
 - 인자 없음: 현재 브랜치 PR 자동 감지
-- PR 번호: `bash .claude/scripts/wait-codex-review.sh 42`
-- PR URL: `bash .claude/scripts/wait-codex-review.sh https://github.com/owner/repo/pull/42`
+- PR 번호: `bash "$CODEX_REVIEW_HELPER" 42`
+- PR URL: `bash "$CODEX_REVIEW_HELPER" https://github.com/owner/repo/pull/42`
 
 ## Feedback 처리
 
