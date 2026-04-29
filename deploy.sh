@@ -300,6 +300,7 @@ case "${1:-help}" in
     $DRY || ensure_local_excludes "$REPO"
     deploy_claude_user
     deploy_agent_scripts_user
+    _remove_legacy_claude_scripts "$HOME"
     deploy_opencode_user
     deploy_codex_user
     echo ""
