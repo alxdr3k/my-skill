@@ -1,0 +1,2 @@
+# Extra project deploy targets that may not be bootstrapped with .claude/commands yet.
+aap-config-server

@@ -20,6 +20,7 @@ SCRIPTS="$REPO/scripts"
 CODEX_RULES="$REPO/codex/rules/default.rules"
 CODEX_SKILLS="$REPO/codex/skills"
 CODEX_SKILL_RENDERER="$SCRIPTS/render-codex-skill.sh"
+DEPLOY_PROJECTS="$REPO/deploy-projects.txt"
 
 GRN='\033[0;32m'; BLU='\033[0;34m'; YLW='\033[1;33m'; RED='\033[0;31m'; NC='\033[0m'
 log()  { echo -e "${BLU}→${NC} $*"; }
@@ -58,6 +59,22 @@ _codex_skill_source() {
   else
     echo "$fallback"
   fi
+}
+
+_project_candidates() {
+  find "$HOME/ws" -maxdepth 3 -name ".claude" -type d -exec dirname {} \;
+
+  [[ -f "$DEPLOY_PROJECTS" ]] || return 0
+  while IFS= read -r line; do
+    line="${line%%#*}"
+    line="$(printf '%s' "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+    [[ -n "$line" ]] || continue
+    if [[ "$line" == /* ]]; then
+      echo "$line"
+    else
+      echo "$HOME/ws/$line"
+    fi
+  done < "$DEPLOY_PROJECTS"
 }
 
 _render_codex_skill() {
@@ -384,7 +401,7 @@ case "${1:-help}" in
         unchanged) (( unchanged++ )) || true ;;
         *) err "unknown deploy result for $proj"; exit 1 ;;
       esac
-    done < <(find "$HOME/ws" -maxdepth 3 -name ".claude" -type d -exec dirname {} \; | sort -u)
+    done < <(_project_candidates | sort -u)
     echo ""
     $DRY || echo "완료: ${updated}개 업데이트, ${unchanged}개 변경 없음"
     $DRY || cat <<'MSG'
