@@ -43,6 +43,11 @@ bash "$CODEX_REVIEW_HELPER"
 | 3 | PR 감지 실패 | PR 번호 또는 URL 요청 후 스크립트 인자로 재실행 |
 | 4 | 영구 API 오류 | 인증/권한 문제 보고 |
 
+첫 successful 조회에서 PR의 comment/review/reaction이 모두 비어 있으면 helper는 한 번만
+`CODEX_INITIAL_EMPTY_DELAY`초, 기본 300초를 쉰 뒤 기존 `CODEX_POLL_INTERVAL`로
+계속 조회한다. PR 생성 직후 Codex/GitHub 쪽 초기 처리 지연 때문에 빈 PR을 너무 촘촘하게
+polling하지 않기 위한 동작이다.
+
 인자 형식:
 
 - 인자 없음: 현재 브랜치 PR 자동 감지
