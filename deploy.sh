@@ -3,8 +3,10 @@
 #
 # Usage:
 #   ./deploy.sh user                  # user-level (symlinks, auto-update)
+#   ./deploy.sh user --clean-legacy-scripts
 #   ./deploy.sh project <path>        # project-level (worktree + git commit + push)
 #   ./deploy.sh project <path> --dry  # dry run
+#   ./deploy.sh project <path> --clean-legacy-scripts
 #   ./deploy.sh all-projects          # ~/ws 전체 프로젝트에 배포
 #   ./deploy.sh all-projects --dry    # dry run
 
@@ -24,6 +26,8 @@ err()  { echo -e "${RED}✗${NC} $*"; }
 
 DRY=false
 [[ "${*}" == *"--dry"* ]] && DRY=true
+CLEAN_LEGACY_SCRIPTS=false
+[[ "${*}" == *"--clean-legacy-scripts"* ]] && CLEAN_LEGACY_SCRIPTS=true
 
 _link() {
   local src="$1" dst="$2"
@@ -219,7 +223,7 @@ _git_deploy() {
   if $DRY; then
     _copy_claude_to "$proj" "$repo_name"
     _copy_agent_scripts_to "$proj"
-    _remove_legacy_claude_scripts "$proj"
+    $CLEAN_LEGACY_SCRIPTS && _remove_legacy_claude_scripts "$proj"
     _copy_opencode_to "$proj" "$proj"
     _copy_codex_skills_to "$proj" "$repo_name"
     ok "[dry] would commit + push + squash merge → $base"
@@ -234,7 +238,7 @@ _git_deploy() {
   # 파일 복사 (worktree로)
   _copy_claude_to "$wt_branch" "$repo_name"
   _copy_agent_scripts_to "$wt_branch"
-  _remove_legacy_claude_scripts "$wt_branch"
+  $CLEAN_LEGACY_SCRIPTS && _remove_legacy_claude_scripts "$wt_branch"
   _copy_opencode_to "$wt_branch" "$proj"
   _copy_codex_skills_to "$wt_branch" "$repo_name"
 
@@ -271,12 +275,12 @@ _git_deploy() {
   # 먼저 remote 상태를 fast-forward한 뒤 local fallback copy를 수행한다.
   git -C "$proj" pull --ff-only -q 2>/dev/null || true
   git -C "$proj" clean -f ".claude/commands/" ".agents/scripts/" 2>/dev/null || true
-  rm -rf "$proj/.claude/scripts"
+  $CLEAN_LEGACY_SCRIPTS && rm -rf "$proj/.claude/scripts"
   ensure_local_excludes "$proj"
   # pull 후에도 없는 파일은 로컬 복사 (e.g. 로컬이 feature 브랜치인 경우)
   _copy_claude_to "$proj" "$repo_name"
   _copy_agent_scripts_to "$proj"
-  _remove_legacy_claude_scripts "$proj"
+  $CLEAN_LEGACY_SCRIPTS && _remove_legacy_claude_scripts "$proj"
   _copy_opencode_to "$proj" "$proj"
   _copy_codex_skills_to "$proj" "$repo_name"
   rm -f "$proj/.claude/direct-push-repos.txt"
@@ -300,7 +304,7 @@ case "${1:-help}" in
     $DRY || ensure_local_excludes "$REPO"
     deploy_claude_user
     deploy_agent_scripts_user
-    _remove_legacy_claude_scripts "$HOME"
+    $CLEAN_LEGACY_SCRIPTS && _remove_legacy_claude_scripts "$HOME"
     deploy_opencode_user
     deploy_codex_user
     echo ""
@@ -363,8 +367,10 @@ MSG
     cat <<EOF
 사용법:
   $0 user                       유저 레벨 배포 (symlink, 수정 즉시 반영)
+  $0 user --clean-legacy-scripts
   $0 project <path>             프로젝트 레벨 배포 (worktree + commit + push)
   $0 project <path> --dry       dry run
+  $0 project <path> --clean-legacy-scripts
   $0 all-projects               ~/ws 전체 프로젝트 배포
   $0 all-projects --dry         dry run
   $0 list                       현재 커맨드 목록 및 배포 현황
