@@ -21,6 +21,11 @@ CODEX_REVIEW_HELPER=".agents/scripts/wait-codex-review.sh"
 bash "$CODEX_REVIEW_HELPER"
 ```
 
+기본 stdout은 기존처럼 사람이 읽는 feedback 출력이다. 구조화된 관찰이 필요하면 동일한
+foreground 호출에 `--json`을 붙이거나 `CODEX_REVIEW_OUTPUT=json`을 설정한다. 이 모드는
+exit code를 바꾸지 않고 stdout에 compact `schema_version:1`,
+`kind:"codex_review_observation"` JSON 1개를 출력한다.
+
 다음 패턴은 **금지** — 매 cycle마다 stdout/상태를 확인하면 토큰을 그대로 다 쓰게 되어 스크립트의 의미가 사라짐:
 - ❌ `bash ... &` (background로 띄우고 polling)
 - ❌ `run_in_background: true` 후 매 cycle output check
@@ -39,7 +44,7 @@ bash "$CODEX_REVIEW_HELPER"
    | 1 | 새 코멘트/리뷰가 stdout에 출력됨 | 분석 → 코드 수정 → commit → push → 1번부터 재시도 |
    | 2 | 두 번째 타임아웃 또는 review 요청 미확인 | loop 종료, 사용자에게 보고 |
    | 3 | PR 감지 실패 | 첫 인자로 PR 번호 또는 URL 전달 |
-   | 4 | 영구 API 에러 (401/403/404) | 사용자에게 인증·권한 점검 요청 |
+   | 4 | 진행을 막는 API 에러 | 사용자에게 인증·권한·네트워크 상태 점검 요청 |
 
 4. exit 1 후 push가 끝나면 다시 1번부터.
 
@@ -89,12 +94,23 @@ branch protection, merge queue, required check pending 때문에 즉시 merge가
 | `CODEX_PASS_ACTOR` | `chatgpt-codex-connector[bot]` | 통과 reaction을 다는 봇 login |
 | `CODEX_PASS_REACTION` | `+1` | 통과를 의미하는 reaction content |
 | `CODEX_REVIEW_REQUEST_BODY` | `@codex review` | `eyes` acknowledgement가 없을 때 1회 남기는 comment |
+| `CODEX_REVIEW_OUTPUT` | `human` | `json`이면 structured observation을 stdout에 출력 |
 
 ## 인자 형식
 
 - 인자 없음: 현재 브랜치의 PR 자동 감지
 - PR 번호: `bash "$CODEX_REVIEW_HELPER" 42`
 - PR URL: `bash "$CODEX_REVIEW_HELPER" https://github.com/owner/repo/pull/42`
+- structured observation: `bash "$CODEX_REVIEW_HELPER" --json 42`
+
+## Structured Observation
+
+`--json` 출력은 DevDeck 같은 projection layer가 나중에 읽을 수 있는 작은 상태 스냅샷이다.
+한 줄 compact JSON이므로 필요하면 호출자가 그대로 JSONL log에 append할 수 있다.
+필드는 versioned envelope, repo/PR/baseline, pass reaction 관찰 상태, feedback items,
+timeout 상태, review request/eyes acknowledgement 상태, API error classification,
+`next_allowed_actions`를 포함한다. 이 JSON은 machine state이고, Markdown/stdout human
+feedback을 대체하지 않는다. codex-loop 자체는 기존 exit code 기반 분기를 유지한다.
 
 ## 작업 지시 시 주의
 

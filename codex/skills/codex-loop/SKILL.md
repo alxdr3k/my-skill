@@ -21,6 +21,11 @@ CODEX_REVIEW_HELPER=".agents/scripts/wait-codex-review.sh"
 bash "$CODEX_REVIEW_HELPER"
 ```
 
+기본 stdout은 기존처럼 사람이 읽는 feedback 출력이다. 구조화된 관찰이 필요하면 동일한
+foreground 호출에 `--json`을 붙이거나 `CODEX_REVIEW_OUTPUT=json`을 설정한다. 이 모드는
+exit code를 바꾸지 않고 stdout에 compact `schema_version:1`,
+`kind:"codex_review_observation"` JSON 1개를 출력한다.
+
 다음 패턴은 금지한다.
 
 - `bash ... &` 로 background polling
@@ -41,7 +46,7 @@ bash "$CODEX_REVIEW_HELPER"
 | 1 | 새 comment/review가 stdout에 출력됨 | 분석 -> 수정 -> commit -> push -> 스크립트 재실행 |
 | 2 | 두 번째 timeout 또는 review 요청 미확인 | loop 종료, 사용자에게 타임아웃 보고 |
 | 3 | PR 감지 실패 | PR 번호 또는 URL 요청 후 스크립트 인자로 재실행 |
-| 4 | 영구 API 오류 | 인증/권한 문제 보고 |
+| 4 | 진행을 막는 API 오류 | 인증/권한/네트워크 문제 보고 |
 
 첫 successful 조회에서 PR의 comment/review/reaction이 모두 비어 있으면 helper는 한 번만
 `CODEX_INITIAL_EMPTY_DELAY`초, 기본 300초를 쉰 뒤 기존 `CODEX_POLL_INTERVAL`로
@@ -64,6 +69,16 @@ polling하지 않기 위한 동작이다.
 - 인자 없음: 현재 브랜치 PR 자동 감지
 - PR 번호: `bash "$CODEX_REVIEW_HELPER" 42`
 - PR URL: `bash "$CODEX_REVIEW_HELPER" https://github.com/owner/repo/pull/42`
+- structured observation: `bash "$CODEX_REVIEW_HELPER" --json 42`
+
+## Structured Observation
+
+`--json` 출력은 DevDeck 같은 projection layer가 나중에 읽을 수 있는 작은 상태 스냅샷이다.
+한 줄 compact JSON이므로 필요하면 호출자가 그대로 JSONL log에 append할 수 있다.
+필드는 versioned envelope, repo/PR/baseline, pass reaction 관찰 상태, feedback items,
+timeout 상태, review request/eyes acknowledgement 상태, API error classification,
+`next_allowed_actions`를 포함한다. 이 JSON은 machine state이고, Markdown/stdout human
+feedback을 대체하지 않는다. codex-loop 자체는 기존 exit code 기반 분기를 유지한다.
 
 ## Feedback 처리
 
