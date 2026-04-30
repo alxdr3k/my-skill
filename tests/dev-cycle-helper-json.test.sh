@@ -60,18 +60,33 @@ JSON
   "verification": [{"kind": "status", "status": "pass", "summary_ko": "상태 파일 확인 완료"}],
   "review_ship": {"status": "not_applicable", "summary_ko": "변경이 없어 PR을 만들지 않았습니다."},
   "next_candidates": [{"id": "AGENT-1A.1", "status": "planned", "summary_ko": "Config Agent 작업입니다.", "unblock_ko": "track 승격 필요"}],
+  "auto_promotion_candidates": [
+    {"id": "AGENT-1A.1", "status": "planned", "summary_ko": "Config Agent 작업입니다.", "eligible": true, "reason_ko": "선행 gate가 완료되어 ready로 승격할 수 있습니다."},
+    {"id": "EXT-1A.1", "status": "planned", "summary_ko": "watch primitive 작업입니다.", "eligible": false, "reason_ko": "track 승격 결정이 필요합니다."}
+  ],
+  "auto_promotions": [
+    {"id": "AGENT-1A.1", "status_before": "planned", "status_after": "ready", "summary_ko": "Config Agent 작업을 ready로 승격했습니다.", "path": "docs/04_IMPLEMENTATION_PLAN.md", "reason_ko": "선행 gate 완료"}
+  ],
   "risks": []
 }
 JSON
 
 jq -e '.cycle == 1 and (.rendered_markdown | contains("사이클 1 브리핑"))' ack1.json >/dev/null
+jq -e '.cycle == 1 and .auto_promotions_count == 0' ack1.json >/dev/null
 jq -e '.cycle == 2 and (.rendered_markdown | contains("다음 검토 후보"))' ack2.json >/dev/null
+jq -e '.cycle == 2 and .result == "all_clear" and .auto_promotions_count == 1' ack2.json >/dev/null
+jq -e '.cycle == 2 and (.rendered_markdown | contains("자동 승격 검토") and contains("EXT-1A.1") and contains("자동 승격 제외"))' ack2.json >/dev/null
+jq -e '.cycle == 2 and (.rendered_markdown | contains("자동 승격") and contains("AGENT-1A.1") and contains("planned -> ready"))' ack2.json >/dev/null
 test "$(wc -l < .dev-cycle/dev-cycle-briefs.jsonl | tr -d ' ')" = 2
 "$helper" summary-json > summary.json
 jq -e '.cycles | length == 2' summary.json >/dev/null
 jq -e '.rendered_markdown | contains("최종 브리핑") and contains("사이클 1:") and contains("사이클 2:")' summary.json >/dev/null
 jq -e '.rendered_markdown | contains("사이클 1: bash -n 통과") and contains("사이클 2: 상태 파일 확인 완료")' summary.json >/dev/null
 jq -e '.rendered_markdown | contains("사이클 1: 테스트 fixture에서는 배포하지 않았습니다.") and contains("사이클 2: 변경이 없어 PR을 만들지 않았습니다.")' summary.json >/dev/null
+jq -e '.auto_promotion_candidates | length == 2' summary.json >/dev/null
+jq -e '.auto_promotions | length == 1' summary.json >/dev/null
+jq -e '.rendered_markdown | contains("자동 승격 검토") and contains("사이클 2: EXT-1A.1")' summary.json >/dev/null
+jq -e '.rendered_markdown | contains("자동 승격") and contains("사이클 2: AGENT-1A.1")' summary.json >/dev/null
 
 assert_rejects "duplicate cycle" "$helper" finish-cycle-json <<'JSON'
 {
@@ -180,6 +195,34 @@ assert_rejects "whitespace-only action summary" "$helper" finish-cycle-json <<'J
   "conclusion": {"summary_ko": "invalid"},
   "verification": [{"kind": "status", "status": "pass", "summary_ko": "x"}],
   "review_ship": {"status": "pushed"},
+  "risks": []
+}
+JSON
+
+assert_rejects "invalid auto promotion item" "$helper" finish-cycle-json <<'JSON'
+{
+  "schema_version": 1,
+  "cycle": 1,
+  "result": "all_clear",
+  "actions": [{"kind": "discover", "summary_ko": "자동 승격 후보를 확인했습니다."}],
+  "conclusion": {"summary_ko": "invalid"},
+  "verification": [{"kind": "status", "status": "pass", "summary_ko": "x"}],
+  "review_ship": {"status": "not_applicable", "summary_ko": "없음"},
+  "auto_promotions": [{}],
+  "risks": []
+}
+JSON
+
+assert_rejects "invalid auto promotion candidate eligible type" "$helper" finish-cycle-json <<'JSON'
+{
+  "schema_version": 1,
+  "cycle": 1,
+  "result": "all_clear",
+  "actions": [{"kind": "discover", "summary_ko": "자동 승격 후보를 확인했습니다."}],
+  "conclusion": {"summary_ko": "invalid"},
+  "verification": [{"kind": "status", "status": "pass", "summary_ko": "x"}],
+  "review_ship": {"status": "not_applicable", "summary_ko": "없음"},
+  "auto_promotion_candidates": [{"id": "BAD-1", "eligible": "false"}],
   "risks": []
 }
 JSON
