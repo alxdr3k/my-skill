@@ -115,7 +115,7 @@ Prefer implementation candidates, and cut the work to a commit-sized task/slice.
 Return NEXT TASK only for ready, unblocked, authorized work. Planned/deferred/blocked scope is inventory to report, not an execution queue.
 If both docs and code are needed, return it as an implementation task and include docs update in the acceptance criteria.
 If --phase is present, inspect only that id's scope.
-If no ready leaf exists, return ALL CLEAR and include a "Next review candidates" list of up to three non-ready leaves with status, unblock/review condition, and any needed user decision or external input. Also note any candidate that appears mechanically auto-promotable, but do not edit files during Step 2.
+If no ready slice exists, return ALL CLEAR and include a "Next review candidates" list of up to three non-ready slices with status, unblock/review condition, and any needed user decision or external input. Also note any candidate that appears mechanically auto-promotable, but do not edit files during Step 2.
 
 Return one of:
 ## NEXT TASK
@@ -125,7 +125,7 @@ Return one of:
 <docs-only fix list>
 
 ## ALL CLEAR
-<current state summary, plus Next review candidates when no ready leaf exists>
+<current state summary, plus Next review candidates when no ready slice exists>
 ```
 
 ## Step 3 - Decide
@@ -174,7 +174,7 @@ REVIEW_BASE="$("$DEV_CYCLE_HELPER" review-base)"
 - Direct-push repo: local diff, staged diff, untracked files, 또는 unpublished `origin/main...HEAD`를 리뷰한다.
 - Standard repo: `$REVIEW_BASE...HEAD` 기준으로 리뷰한다.
 - Review Pass는 diff review와 impact triage/scan이 함께 통과한 상태다. impact scan을 review OK 이후 별도 단계로 두지 않는다.
-- Impact triage: docs/typo/leaf/test-only처럼 외부 surface가 없으면 `Impact: local only`로 끝낸다.
+- Impact triage: docs/typo/slice/test-only처럼 외부 surface가 없으면 `Impact: local only`로 끝낸다.
 - 위험 trigger: shared helper/API, command/skill, deploy/build/test infra, config/env/schema, persistence, auth/security, public CLI/output, 파일 경로/계약 변경, 변경 파일 5개 초과. 해당하면 변경된 symbol/path/env/command를 `rg`로 repo 전체에서 추적해 call site/docs/tests/deploy refs를 확인한다.
 - findings는 batch로 정리한다. actionable finding은 같은 cycle에서 한 번에 수정하고 targeted verify 후 Review Pass를 반복한다. fix가 surface를 넓히지 않았으면 다음 pass는 추가 diff 중심으로 본다.
 - 새 기능/아키텍처 변경, 보안/인증 관련이면 adversarial review를 우선한다.
