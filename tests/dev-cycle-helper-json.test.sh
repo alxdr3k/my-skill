@@ -11,6 +11,8 @@ new_repo() {
   dir="$tmp_root/$name"
   mkdir -p "$dir"
   git -C "$dir" init -q
+  git -C "$dir" config user.email "test@example.com"
+  git -C "$dir" config user.name "Test User"
   printf '%s\n' "$dir"
 }
 
@@ -26,6 +28,57 @@ assert_rejects() {
 
 bash -n "$helper"
 
+repo_scope_docs="$(new_repo scope-docs)"
+cd "$repo_scope_docs"
+mkdir -p commands
+printf '# Dev Cycle\n' > commands/dev-cycle.md
+"$helper" change-scope > "$tmp_root/scope-docs.json"
+jq -e '
+  .kind == "dev_cycle_change_scope" and
+  .change_scope.kind == "docs_only_contract" and
+  .change_scope.review_required == true and
+  .change_scope.contract_surface == true and
+  .verification_profile.profile == "docs_contract" and
+  .verification_profile.full_ci_required == false and
+  (.review_inputs[] | select(.kind == "untracked_files" and (.files | index("commands/dev-cycle.md"))))
+' "$tmp_root/scope-docs.json" >/dev/null
+
+repo_scope_code="$(new_repo scope-code)"
+cd "$repo_scope_code"
+mkdir -p src
+printf 'export const x = 1;\n' > src/index.ts
+"$helper" change-scope > "$tmp_root/scope-code.json"
+jq -e '
+  .change_scope.kind == "code_or_runtime" and
+  .verification_profile.profile == "full" and
+  .verification_profile.full_ci_required == true
+' "$tmp_root/scope-code.json" >/dev/null
+
+repo_scope_standard="$(new_repo scope-standard)"
+cd "$repo_scope_standard"
+printf '# Base\n' > README.md
+git add README.md
+git commit -qm "base"
+git switch -c feature -q
+mkdir -p docs
+printf 'committed\n' > docs/committed.md
+git add docs/committed.md
+git commit -qm "committed docs"
+printf 'staged\n' > docs/staged.md
+git add docs/staged.md
+printf 'unstaged\n' >> README.md
+printf 'untracked\n' > docs/untracked.md
+"$helper" change-scope > "$tmp_root/scope-standard.json"
+jq -e '
+  .repo.type == "standard" and
+  .review_base == "main" and
+  .change_scope.kind == "docs_only_low_risk" and
+  (.review_inputs[] | select(.kind == "base_range" and .command == "git diff main...HEAD" and (.files | index("docs/committed.md")))) and
+  (.review_inputs[] | select(.kind == "staged_diff" and (.files | index("docs/staged.md")))) and
+  (.review_inputs[] | select(.kind == "unstaged_diff" and (.files | index("README.md")))) and
+  (.review_inputs[] | select(.kind == "untracked_files" and (.files | index("docs/untracked.md"))))
+' "$tmp_root/scope-standard.json" >/dev/null
+
 repo="$(new_repo ok)"
 cd "$repo"
 eval "$("$helper" init-brief)"
@@ -35,15 +88,17 @@ unset DEV_CYCLE_RUN_ID DEV_CYCLE_BRIEF_LOG DEV_CYCLE_BRIEF_JSONL DEV_CYCLE_RUN_J
 {
   "schema_version": 1,
   "cycle": 1,
-  "result": "shipped",
+  "result": "landed",
   "actions": [
     {"kind": "implement", "summary_ko": "JSON 브리핑 인터페이스를 구현했습니다."},
     {"kind": "verify", "summary_ko": "대표 입력을 검증했습니다."}
   ],
   "conclusion": {"summary_ko": "사이클 브리핑이 JSONL에 기록되고 Markdown으로 렌더링됩니다."},
   "changes": [{"path": "scripts/dev-cycle-helper.sh", "summary_ko": "finish-cycle-json 추가"}],
+  "change_scope": {"kind": "docs_only_contract", "changed_files_count": 2, "contract_surface": true, "review_required": true},
+  "verification_plan": {"profile": "docs_contract", "full_ci_required": false},
   "verification": [{"kind": "shell", "status": "pass", "summary_ko": "bash -n 통과"}],
-  "review_ship": {"status": "pushed", "summary_ko": "테스트 fixture에서는 배포하지 않았습니다."},
+  "review_land": {"status": "pushed", "summary_ko": "테스트 fixture에서는 원격 반영하지 않았습니다."},
   "next_candidates": [],
   "risks": []
 }
@@ -73,6 +128,8 @@ JSON
 
 jq -e '.cycle == 1 and (.rendered_markdown | contains("사이클 1 브리핑"))' ack1.json >/dev/null
 jq -e '.cycle == 1 and .auto_promotions_count == 0' ack1.json >/dev/null
+jq -e '.cycle == 1 and (.rendered_markdown | contains("반영 완료 (landed)") and contains("리뷰/반영") and contains("검증 계획"))' ack1.json >/dev/null
+jq -e '.cycle == 1 and (.rendered_markdown | contains("배포") | not)' ack1.json >/dev/null
 jq -e '.cycle == 2 and (.rendered_markdown | contains("다음 검토 후보"))' ack2.json >/dev/null
 jq -e '.cycle == 2 and .result == "all_clear" and .auto_promotions_count == 1' ack2.json >/dev/null
 jq -e '.cycle == 2 and (.rendered_markdown | contains("자동 승격 검토") and contains("EXT-1A.1") and contains("자동 승격 제외"))' ack2.json >/dev/null
@@ -82,7 +139,8 @@ test "$(wc -l < .dev-cycle/dev-cycle-briefs.jsonl | tr -d ' ')" = 2
 jq -e '.cycles | length == 2' summary.json >/dev/null
 jq -e '.rendered_markdown | contains("최종 브리핑") and contains("사이클 1:") and contains("사이클 2:")' summary.json >/dev/null
 jq -e '.rendered_markdown | contains("사이클 1: bash -n 통과") and contains("사이클 2: 상태 파일 확인 완료")' summary.json >/dev/null
-jq -e '.rendered_markdown | contains("사이클 1: 테스트 fixture에서는 배포하지 않았습니다.") and contains("사이클 2: 변경이 없어 PR을 만들지 않았습니다.")' summary.json >/dev/null
+jq -e '.rendered_markdown | contains("사이클 1: 테스트 fixture에서는 원격 반영하지 않았습니다.") and contains("사이클 2: 변경이 없어 PR을 만들지 않았습니다.")' summary.json >/dev/null
+jq -e '.rendered_markdown | contains("리뷰/반영") and (contains("리뷰/배포") | not)' summary.json >/dev/null
 jq -e '.auto_promotion_candidates | length == 2' summary.json >/dev/null
 jq -e '.auto_promotions | length == 1' summary.json >/dev/null
 jq -e '.rendered_markdown | contains("자동 승격 검토") and contains("사이클 2: EXT-1A.1")' summary.json >/dev/null
@@ -132,7 +190,7 @@ export DEV_CYCLE_BRIEF_JSONL="$tmp_root/stale-env.jsonl"
 {
   "schema_version": 1,
   "cycle": 1,
-  "result": "shipped",
+  "result": "landed",
   "actions": [{"kind": "implement", "summary_ko": "stale env를 무시합니다."}],
   "conclusion": {"summary_ko": "JSONL은 현재 repo state path에 기록됩니다."},
   "verification": [{"kind": "status", "status": "pass", "summary_ko": "state path 확인"}],
@@ -157,7 +215,7 @@ export DEV_CYCLE_BRIEF_LOG="$stale_log"
 {
   "schema_version": 1,
   "cycle": 1,
-  "result": "shipped",
+  "result": "landed",
   "actions": [{"kind": "implement", "summary_ko": "stale run/log env를 무시합니다."}],
   "conclusion": {"summary_ko": "현재 repo의 .dev-cycle state를 사용합니다."},
   "verification": [{"kind": "status", "status": "pass", "summary_ko": "state context 확인"}],
@@ -177,7 +235,7 @@ assert_rejects "empty actions" "$helper" finish-cycle-json <<'JSON'
 {
   "schema_version": 1,
   "cycle": 1,
-  "result": "shipped",
+  "result": "landed",
   "actions": [],
   "conclusion": {"summary_ko": "invalid"},
   "verification": [{"kind": "status", "status": "pass", "summary_ko": "x"}],
@@ -190,7 +248,7 @@ assert_rejects "whitespace-only action summary" "$helper" finish-cycle-json <<'J
 {
   "schema_version": 1,
   "cycle": 1,
-  "result": "shipped",
+  "result": "landed",
   "actions": [{"kind": "implement", "summary_ko": "   "}],
   "conclusion": {"summary_ko": "invalid"},
   "verification": [{"kind": "status", "status": "pass", "summary_ko": "x"}],
@@ -227,6 +285,34 @@ assert_rejects "invalid auto promotion candidate eligible type" "$helper" finish
 }
 JSON
 
+assert_rejects "invalid change scope review_required type" "$helper" finish-cycle-json <<'JSON'
+{
+  "schema_version": 1,
+  "cycle": 1,
+  "result": "landed",
+  "actions": [{"kind": "implement", "summary_ko": "변경 범위를 기록합니다."}],
+  "conclusion": {"summary_ko": "invalid"},
+  "verification": [{"kind": "status", "status": "pass", "summary_ko": "x"}],
+  "review_land": {"status": "pushed", "summary_ko": "없음"},
+  "change_scope": {"kind": "docs_only", "review_required": "true"},
+  "risks": []
+}
+JSON
+
+assert_rejects "invalid verification plan full_ci_required type" "$helper" finish-cycle-json <<'JSON'
+{
+  "schema_version": 1,
+  "cycle": 1,
+  "result": "landed",
+  "actions": [{"kind": "implement", "summary_ko": "검증 계획을 기록합니다."}],
+  "conclusion": {"summary_ko": "invalid"},
+  "verification": [{"kind": "status", "status": "pass", "summary_ko": "x"}],
+  "review_land": {"status": "pushed", "summary_ko": "없음"},
+  "verification_plan": {"profile": "docs_only", "full_ci_required": "false"},
+  "risks": []
+}
+JSON
+
 repo_backfill="$(new_repo backfill)"
 cd "$repo_backfill"
 eval "$("$helper" init-brief)"
@@ -258,12 +344,12 @@ PATH="$repo_risk/bin:$PATH" "$helper" finish-cycle-json <<'JSON' > ack-risk.json
 {
   "schema_version": 1,
   "cycle": 1,
-  "result": "shipped",
-  "actions": [{"kind": "ship", "summary_ko": "변경을 push했습니다."}],
-  "conclusion": {"summary_ko": "작업은 배포됐고 남은 리스크를 기록합니다."},
+  "result": "landed",
+  "actions": [{"kind": "land", "summary_ko": "변경을 push했습니다."}],
+  "conclusion": {"summary_ko": "작업은 반영됐고 남은 리스크를 기록합니다."},
   "changes": [],
   "verification": [{"kind": "test", "status": "pass", "summary_ko": "대표 테스트 통과"}],
-  "review_ship": {"status": "pushed", "summary_ko": "main에 push 완료"},
+  "review_land": {"status": "pushed", "summary_ko": "main에 push 완료"},
   "next_candidates": [],
   "risks": [
     {"summary_ko": "후속 결선 리스크", "next_action_ko": "다음 cycle에서 처리"},
@@ -271,7 +357,7 @@ PATH="$repo_risk/bin:$PATH" "$helper" finish-cycle-json <<'JSON' > ack-risk.json
   ]
 }
 JSON
-jq -e '.result == "shipped"' ack-risk.json >/dev/null
+jq -e '.result == "landed"' ack-risk.json >/dev/null
 jq -e '(.risks | length == 2) and all(.risks[]; .issue_error == "fake gh failure")' .dev-cycle/dev-cycle-briefs.jsonl >/dev/null
 
 repo_risk_success="$(new_repo risk-success)"
@@ -284,12 +370,12 @@ PATH="$repo_risk_success/bin:$PATH" "$helper" finish-cycle-json <<'JSON' > ack-r
 {
   "schema_version": 1,
   "cycle": 1,
-  "result": "shipped",
-  "actions": [{"kind": "ship", "summary_ko": "변경을 push했습니다."}],
-  "conclusion": {"summary_ko": "작업은 배포됐고 남은 리스크를 이슈로 기록합니다."},
+  "result": "landed",
+  "actions": [{"kind": "land", "summary_ko": "변경을 push했습니다."}],
+  "conclusion": {"summary_ko": "작업은 반영됐고 남은 리스크를 이슈로 기록합니다."},
   "changes": [],
   "verification": [{"kind": "test", "status": "pass", "summary_ko": "대표 테스트 통과"}],
-  "review_ship": {"status": "pushed", "summary_ko": "main에 push 완료"},
+  "review_land": {"status": "pushed", "summary_ko": "main에 push 완료"},
   "next_candidates": [],
   "risks": [{"summary_ko": "후속 결선 리스크", "next_action_ko": "다음 cycle에서 처리"}]
 }
