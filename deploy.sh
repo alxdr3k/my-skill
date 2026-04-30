@@ -47,7 +47,12 @@ _copy() {
   local src="$1" dst="$2"
   $DRY && { ok "[dry] copy $(basename "$dst")"; return; }
   mkdir -p "$(dirname "$dst")"
-  cp "$src" "$dst"
+  if [[ -d "$src" ]]; then
+    rm -rf "$dst"
+    cp -R "$src" "$dst"
+  else
+    cp "$src" "$dst"
+  fi
   ok "$(basename "$dst") → copied"
 }
 
@@ -194,7 +199,7 @@ _copy_agent_scripts_to() {
   log "Agent scripts  $dest/.agents/scripts/"
   for f in "$SCRIPTS"/*; do
     _copy "$f" "$dest/.agents/scripts/$(basename "$f")"
-    $DRY || chmod +x "$dest/.agents/scripts/$(basename "$f")"
+    $DRY || [[ -d "$dest/.agents/scripts/$(basename "$f")" ]] || chmod +x "$dest/.agents/scripts/$(basename "$f")"
   done
   _copy "$REPO/direct-push-repos.txt" "$dest/.agents/scripts/direct-push-repos.txt"
 }
