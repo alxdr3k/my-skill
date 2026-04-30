@@ -39,7 +39,8 @@ _link() {
   local src="$1" dst="$2"
   $DRY && { ok "[dry] symlink $(basename "$dst")"; return; }
   mkdir -p "$(dirname "$dst")"
-  ln -sf "$src" "$dst"
+  rm -rf "$dst"
+  ln -s "$src" "$dst"
   ok "$(basename "$dst") → symlink"
 }
 
