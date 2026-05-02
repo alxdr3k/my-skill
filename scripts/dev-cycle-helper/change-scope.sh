@@ -88,13 +88,14 @@ change_scope() {
   local type base range_ref tmp_dir committed staged unstaged untracked changed
   local committed_count staged_count unstaged_count untracked_count changed_count
   local scope_kind profile contract_surface full_ci_required
-  local range_command
+  local range_command range_form
   require_jq || return 1
 
   type="$(repo_type)"
   base="$(review_base)"
   range_ref="$(review_range_ref "$type" "$base")"
   range_command=""
+  range_form=""
   tmp_dir="$(mktemp -d)" || return 1
   committed="$tmp_dir/committed"
   staged="$tmp_dir/staged"
@@ -106,10 +107,14 @@ change_scope() {
   if [[ -n "$range_ref" ]]; then
     if git diff --name-only "$range_ref...HEAD" > "$committed" 2>/dev/null; then
       range_command="git diff $range_ref...HEAD"
+      range_form="triple_dot"
     elif git diff --name-only "$range_ref" HEAD > "$committed" 2>/dev/null; then
       range_command="git diff $range_ref HEAD"
+      range_form="two_dot"
+      echo "WARN: triple-dot diff failed; falling back to two-dot form (semantics differ: includes unrelated base changes)" >&2
     else
       : > "$committed"
+      range_form=""
     fi
   fi
   git diff --cached --name-only > "$staged"
@@ -136,6 +141,7 @@ change_scope() {
     --arg review_base "$base" \
     --arg range_ref "$range_ref" \
     --arg range_command "$range_command" \
+    --arg range_form "$range_form" \
     --rawfile committed "$committed" \
     --rawfile staged "$staged" \
     --rawfile unstaged "$unstaged" \
@@ -163,6 +169,7 @@ change_scope() {
       kind:"dev_cycle_change_scope",
       repo:{name:$repo, type:$repo_type},
       review_base:$review_base,
+      range_form:(if $range_form == "" then null else $range_form end),
       change_scope:{
         kind:$scope_kind,
         changed_files_count:$changed_count,
@@ -244,14 +251,16 @@ review_dossier() {
   changed_file="$tmp_dir/changed"
   : > "$numstat_file"
 
+  committed_numstat_ok=false
   if [[ -n "$range_ref" ]]; then
-    committed_numstat_ok=false
     if git diff --numstat "$range_ref...HEAD" >> "$numstat_file" 2>/dev/null; then
       committed_numstat_ok=true
     elif git diff --numstat "$range_ref" HEAD >> "$numstat_file" 2>/dev/null; then
       committed_numstat_ok=true
+      echo "WARN: triple-dot numstat failed; two-dot form used (changed_lines may include unrelated base changes)" >&2
+    else
+      echo "WARN: committed numstat failed; changed_lines may be underestimated (routing could be too conservative)" >&2
     fi
-    [[ "$committed_numstat_ok" == "true" ]] || true
   fi
   git diff --cached --numstat >> "$numstat_file"
   git diff --numstat >> "$numstat_file"
@@ -275,7 +284,8 @@ review_dossier() {
     --argjson deletions "$deletions" \
     --argjson diff_files "$diff_files" \
     --argjson untracked_text_lines "$untracked_lines" \
-    --argjson changed_lines "$changed_lines" '
+    --argjson changed_lines "$changed_lines" \
+    --argjson committed_numstat_ok "$committed_numstat_ok" '
     def lines($s): $s | split("\n") | map(select(length > 0));
     def trigger($id; $severity; $summary_ko; $evidence):
       {id:$id, severity:$severity, summary_ko:$summary_ko, evidence:$evidence};
@@ -321,7 +331,8 @@ review_dossier() {
           untracked_text_lines:$untracked_text_lines,
           changed_lines:$changed_lines,
           diff_files_count:$diff_files,
-          changed_files_count:$scope.change_scope.changed_files_count
+          changed_files_count:$scope.change_scope.changed_files_count,
+          committed_numstat_ok:$committed_numstat_ok
         },
         risk_triggers:$risk_triggers,
         reviewer_route:{

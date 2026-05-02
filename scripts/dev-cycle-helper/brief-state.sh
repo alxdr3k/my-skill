@@ -3,7 +3,7 @@
 init_brief() {
   local run_id started_at start_epoch state_dir log jsonl run_json run_id_file start_epoch_file
   require_jq || return 1
-  run_id="$(date -u +%Y%m%dT%H%M%SZ)"
+  run_id="$(date -u +%Y%m%dT%H%M%SZ)-$$"
   started_at="$(iso_now)"
   start_epoch="$(date -u +%s)"
   state_dir="$(ensure_state_dir)"

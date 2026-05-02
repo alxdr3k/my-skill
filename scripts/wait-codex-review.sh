@@ -381,8 +381,15 @@ while :; do
   stop_if_permanent_api_error
 
   new_items=$(jq -n --arg base "$baseline" --arg request_body "$review_request_body" \
+    --arg author "$request_author" \
     --argjson ic "$ic" --argjson rv "$rv" --argjson rc "$rc" '
-    ($ic | [.[] | select(.created_at > $base) | select(.body != $request_body) | {kind:"issue_comment", at:.created_at, login:.user.login, body:.body, state:""}])
+    ($ic | [.[] | select(.created_at > $base) | select(
+      if (($author | length) > 0) then
+        (.user.login != $author) or (.body != $request_body)
+      else
+        .body != $request_body
+      end
+    ) | {kind:"issue_comment", at:.created_at, login:.user.login, body:.body, state:""}])
     + ($rv | [.[] | select((.submitted_at // "") > $base) | {kind:"review", at:.submitted_at, login:.user.login, body:(.body // ""), state:(.state // "")}])
     + ($rc | [.[] | select(.created_at > $base) | {kind:"review_comment", at:.created_at, login:.user.login, path:.path, line:(.line // .original_line), body:.body, state:""}])
     | sort_by(.at)')
@@ -437,9 +444,12 @@ while :; do
       if ! post_out=$(gh api "repos/$repo/issues/$pr/comments" \
         -f body="$review_request_body" 2>&1 >/dev/null); then
         post_class="$(classify_api_error "$post_out")"
-        record_api_error "post_review_request" "$post_class" "$post_out"
-        echo "ERROR: failed to post review request comment: $post_out" >&2
-        finish api_error 4
+        if [ "$post_class" = "permanent" ]; then
+          record_api_error "post_review_request" permanent "$post_out"
+          echo "ERROR: failed to post review request comment (permanent): $post_out" >&2
+          finish api_error 4
+        fi
+        echo "WARN: transient failure posting review request; will retry next poll: $post_out" >&2
       fi
       review_request_posted=1
       review_request_polls=0
