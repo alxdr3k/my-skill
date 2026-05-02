@@ -1,6 +1,6 @@
 ---
 name: dev-cycle
-description: "전체 개발 사이클: sync → discover → implement → verify → review → land. 플래그: --loop [N], --phase <id>"
+description: "전체 개발 사이클: sync → discover → implement → verify → review → land. 플래그: --loop [N], --phase <id>, --opus-review"
 ---
 
 # Dev Cycle
@@ -10,6 +10,7 @@ description: "전체 개발 사이클: sync → discover → implement → verif
 - `--loop`: cycle 완료 후 반복한다. Step 3에서 **ALL CLEAR**이고 자동 승격한 후보가 없으면 종료한다.
 - `--loop N`: 최대 N회 반복한다. **ALL CLEAR**이고 자동 승격한 후보가 없으면 N회 전에도 종료한다.
 - `--phase <id>`: 탐색과 구현 범위를 해당 roadmap / task / milestone / track / phase / slice id로 제한한다. 값을 파싱하거나 변환하지 않는다.
+- `--opus-review`: Review Pass를 dossier 라우팅과 무관하게 항상 Opus sub-agent로 실행한다. Step 9에서 `/codex-loop`를 실행할 때도 `--opus-review`를 전달한다.
 
 ## Invariants
 
@@ -196,7 +197,8 @@ REVIEW_DOSSIER_JSON="$("$DEV_CYCLE_HELPER" review-dossier)"
 
 - `CHANGE_SCOPE_JSON.review_inputs`에 있는 base range, staged diff, unstaged diff, untracked files를 모두 리뷰한다.
 - `REVIEW_DOSSIER_JSON.review_dossier`는 diff 크기, 파일 확산, 계약/중요 경로처럼 script가 계산 가능한 신호만 담는다. dossier가 없거나 helper가 실패하면 `CHANGE_SCOPE_JSON`과 아래 위험 trigger를 수동으로 적용한다.
-- `review_dossier.reviewer_route.recommended == "opus_or_high_effort"`이면 model-routed reviewer를 사용할 수 있는 환경에서는 Opus reviewer를 우선한다. 기준은 휴리스틱이다: 200라인 초과는 집중도 저하 경고, 400라인 초과는 강한 리뷰/분할 후보, 변경 파일 5개 초과와 보안/영속성/설정/배포/공개 command 경로는 high trigger다.
+- `--opus-review`가 있으면 dossier 라우팅 결과와 무관하게 항상 Opus sub-agent를 Review Pass에 사용한다.
+- `--opus-review`가 없을 때: `review_dossier.reviewer_route.recommended == "opus_or_high_effort"`이면 model-routed reviewer를 사용할 수 있는 환경에서는 Opus reviewer를 우선한다. 기준은 휴리스틱이다: 200라인 초과는 집중도 저하 경고, 400라인 초과는 강한 리뷰/분할 후보, 변경 파일 5개 초과와 보안/영속성/설정/배포/공개 command 경로는 high trigger다.
 - Opus reviewer를 사용할 때도 입력을 dossier의 review inputs와 risk triggers로 제한한다. 이전 pass의 전체 transcript를 재사용하지 말고, 필요한 경우 이전 actionable finding 요약만 넘긴다.
 - Direct-push repo와 Standard repo 모두 같은 입력 규칙을 쓴다. Standard repo도 `$REVIEW_BASE...HEAD`만 보지 않는다. commit 전 local diff와 untracked files가 있으면 반드시 Review Pass 입력에 포함한다.
 - Review Pass는 diff review와 impact triage/scan이 함께 통과한 상태다. impact scan을 review OK 이후 별도 단계로 두지 않는다.
@@ -232,7 +234,7 @@ REVIEW_DOSSIER_JSON="$("$DEV_CYCLE_HELPER" review-dossier)"
 ## Step 9 - PR Merge Gate
 
 - Direct-push repo: Step 9를 건너뛰고 cycle 종료 처리로 간다.
-- Standard repo: 방금 연 open PR에 대해 `/codex-loop`를 실행한다.
+- Standard repo: 방금 연 open PR에 대해 `/codex-loop`를 실행한다. `--opus-review`가 있으면 `/codex-loop --opus-review`로 실행한다.
 - `/codex-loop`는 review feedback 처리, checks 확인, merge까지 완료해야 한다. 해당 PR이 merge되기 전에는 cycle을 마치거나 다음 loop로 넘어가지 않는다.
 - merge 완료 후 `$REVIEW_BASE`로 checkout하고 `git pull --ff-only origin "$REVIEW_BASE"`로 sync한다.
 - sync 후 local `DEV_CYCLE_WORK_BRANCH`를 삭제한다. squash merge 때문에 일반 삭제가 실패하면, PR merge와 clean working tree를 확인한 뒤 local branch만 강제 삭제한다. 이 cleanup이 끝나기 전에는 cycle을 마치거나 다음 loop로 넘어가지 않는다.
