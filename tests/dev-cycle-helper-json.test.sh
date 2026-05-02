@@ -94,6 +94,20 @@ jq -e '
   (.review_dossier.risk_triggers | length == 0)
 ' "$tmp_root/dossier-standard.json" >/dev/null
 
+repo_dossier_untracked_no_newline="$(new_repo dossier-untracked-no-newline)"
+cd "$repo_dossier_untracked_no_newline"
+printf '# Base\n' > README.md
+git add README.md
+git commit -qm "base"
+printf 'unterminated line' > docs.md
+"$helper" review-dossier > "$tmp_root/dossier-untracked-no-newline.json"
+jq -e '
+  .kind == "dev_cycle_review_dossier" and
+  .review_dossier.summary.untracked_text_lines == 1 and
+  .review_dossier.summary.changed_lines == 1 and
+  (.review_inputs[] | select(.kind == "untracked_files" and (.files | index("docs.md"))))
+' "$tmp_root/dossier-untracked-no-newline.json" >/dev/null
+
 repo_dossier_contract="$(new_repo dossier-contract)"
 cd "$repo_dossier_contract"
 mkdir -p commands

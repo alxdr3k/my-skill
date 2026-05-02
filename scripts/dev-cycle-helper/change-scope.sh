@@ -220,7 +220,7 @@ untracked_text_line_total() {
   total=0
   while IFS= read -r file; do
     [[ -n "$file" && -f "$file" ]] || continue
-    if lines="$(wc -l < "$file" 2>/dev/null | tr -d ' ')"; then
+    if lines="$(awk 'END { print NR }' "$file" 2>/dev/null | tr -d ' ')"; then
       case "$lines" in
         ''|*[!0-9]*) ;;
         *) total=$((total + lines)) ;;
