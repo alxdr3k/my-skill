@@ -29,11 +29,16 @@ skip() { echo -e "${YLW}–${NC} $*"; }
 err()  { echo -e "${RED}✗${NC} $*"; }
 
 DRY=false
-[[ "${*}" == *"--dry"* ]] && DRY=true
 CLEAN_LEGACY_SCRIPTS=false
-[[ "${*}" == *"--clean-legacy-scripts"* ]] && CLEAN_LEGACY_SCRIPTS=true
 MIGRATE_CODEX_SKILLS=false
-[[ "${*}" == *"--migrate-codex-skills"* ]] && MIGRATE_CODEX_SKILLS=true
+for _arg in "$@"; do
+  case "$_arg" in
+    --dry) DRY=true ;;
+    --clean-legacy-scripts) CLEAN_LEGACY_SCRIPTS=true ;;
+    --migrate-codex-skills) MIGRATE_CODEX_SKILLS=true ;;
+  esac
+done
+unset _arg
 
 _link() {
   local src="$1" dst="$2"
@@ -316,12 +321,18 @@ _git_deploy() {
   git -C "$proj" worktree add --detach "$wt_branch" "origin/$base" -q
   git -C "$wt_branch" checkout -b "$branch" -q
 
-  # 파일 복사 (worktree로)
+  # 파일 복사 (worktree로) — 실패 시 worktree 정리 후 에러 전파
   _copy_claude_to "$wt_branch" "$repo_name"
   _copy_agent_scripts_to "$wt_branch"
   $CLEAN_LEGACY_SCRIPTS && _remove_legacy_claude_scripts "$wt_branch"
   _copy_opencode_to "$wt_branch" "$proj"
-  _copy_codex_skills_to "$wt_branch" "$repo_name"
+  if ! _copy_codex_skills_to "$wt_branch" "$repo_name"; then
+    git -C "$proj" worktree remove "$wt_branch" --force 2>/dev/null || true
+    rm -rf "$wt_branch"
+    git -C "$proj" branch -D "$branch" 2>/dev/null || true
+    err "codex skill render failed for $repo_name — worktree cleaned up"
+    return 1
+  fi
 
   # 프로젝트에 잘못 배포된 direct-push-repos.txt 제거
   rm -f "$wt_branch/.claude/direct-push-repos.txt"
