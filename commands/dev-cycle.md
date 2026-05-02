@@ -32,7 +32,7 @@ DEV_CYCLE_HELPER=".agents/scripts/dev-cycle-helper.sh"
 
 Claude Code에서 model-routed sub-agent를 사용할 수 있으면 비용/품질 균형을 위해 아래 원칙을 따른다. 사용할 수 없거나 handoff 비용이 더 크면 같은 세션에서 수행한다.
 
-- Review Pass의 비판적 판단은 helper-generated `REVIEW_DOSSIER_JSON`을 먼저 만들고, 그 결과가 `opus_or_high_effort`를 권장할 때 Opus read-only reviewer를 우선한다. 입력은 full repo가 아니라 `REVIEW_DOSSIER_JSON.review_inputs`, summary/risk triggers, 필요한 diff/call site/검증 출력으로 제한한다.
+- Review Pass의 기본 리뷰어는 Codex (`/codex:adversarial-review` 또는 `/codex:review`)다. dossier가 `opus_or_high_effort`를 권장하거나 `--opus-review` flag가 있으면 Opus sub-agent를 대신 사용한다. 입력은 full repo가 아니라 dossier review_inputs, risk triggers, 필요한 diff/call site/검증 출력으로 제한한다.
 - 구현과 finding 수정은 Sonnet/main execution을 기본으로 한다. 단순 수정에 별도 Sonnet worker를 만들지 않는다.
 - PR polling, pass reaction 확인, comment fetch 같은 상태 확인은 `codex-loop`/helper script에 맡긴다. LLM이 필요한 요약/분류가 있을 때만 Haiku 또는 read-only Explore를 쓴다.
 - Opus reviewer resume은 기본값이 아니다. 같은 파일군에서 3회 이상 리뷰/반박/재검토가 이어지고 이전 판단 맥락이 중요할 때만 resume한다. 보통은 이전 finding 요약 + incremental diff로 새 리뷰를 요청한다.
@@ -195,19 +195,27 @@ CHANGE_SCOPE_JSON="$("$DEV_CYCLE_HELPER" change-scope)"
 REVIEW_DOSSIER_JSON="$("$DEV_CYCLE_HELPER" review-dossier)"
 ```
 
-- `CHANGE_SCOPE_JSON.review_inputs`에 있는 base range, staged diff, unstaged diff, untracked files를 모두 리뷰한다.
 - `REVIEW_DOSSIER_JSON.review_dossier`는 diff 크기, 파일 확산, 계약/중요 경로처럼 script가 계산 가능한 신호만 담는다. dossier가 없거나 helper가 실패하면 `CHANGE_SCOPE_JSON`과 아래 위험 trigger를 수동으로 적용한다.
-- `--opus-review`가 있으면 dossier 라우팅 결과와 무관하게 항상 Opus sub-agent를 Review Pass에 사용한다.
-- `--opus-review`가 없을 때: `review_dossier.reviewer_route.recommended == "opus_or_high_effort"`이면 model-routed reviewer를 사용할 수 있는 환경에서는 Opus reviewer를 우선한다. 기준은 휴리스틱이다: 200라인 초과는 집중도 저하 경고, 400라인 초과는 강한 리뷰/분할 후보, 변경 파일 5개 초과와 보안/영속성/설정/배포/공개 command 경로는 high trigger다.
-- Opus reviewer를 사용할 때도 입력을 dossier의 review inputs와 risk triggers로 제한한다. 이전 pass의 전체 transcript를 재사용하지 말고, 필요한 경우 이전 actionable finding 요약만 넘긴다.
-- Direct-push repo와 Standard repo 모두 같은 입력 규칙을 쓴다. Standard repo도 `$REVIEW_BASE...HEAD`만 보지 않는다. commit 전 local diff와 untracked files가 있으면 반드시 Review Pass 입력에 포함한다.
-- Review Pass는 diff review와 impact triage/scan이 함께 통과한 상태다. impact scan을 review OK 이후 별도 단계로 두지 않는다.
+
+### 리뷰어 선택
+
+| 조건 | 리뷰어 |
+|------|--------|
+| `--opus-review` | Opus sub-agent (Codex 리뷰 스킵) |
+| `reviewer_route.recommended == "opus_or_high_effort"` | Opus sub-agent |
+| 1~2회차 기본 | `/codex:adversarial-review --base "$REVIEW_BASE"` |
+| 3회차~ 기본 | `/codex:review --base "$REVIEW_BASE"` |
+
+Direct-push repo는 회차와 무관하게 항상 `/codex:adversarial-review`를 사용한다.
+
+- 리뷰어(Codex 또는 Opus)에게 넘기는 입력은 full repo가 아니라 `CHANGE_SCOPE_JSON.review_inputs`, dossier summary/risk triggers, 필요한 call site/검증 출력으로 제한한다. 이전 pass의 전체 transcript를 재사용하지 말고, 필요한 경우 이전 actionable finding 요약만 넘긴다.
+- Direct-push repo와 Standard repo 모두 같은 입력 규칙을 쓴다. commit 전 local diff와 untracked files가 있으면 반드시 포함한다.
+- Review Pass는 diff review와 impact triage/scan이 함께 통과한 상태다.
 - Impact triage: docs/typo/slice/test-only처럼 외부 surface가 없으면 `Impact: local only`로 끝낸다.
 - 위험 trigger: shared helper/API, command/skill, deploy/build/test infra, config/env/schema, persistence, auth/security, public CLI/output, 파일 경로/계약 변경, 변경 파일 5개 초과. 해당하면 변경된 symbol/path/env/command를 `rg`로 repo 전체에서 추적해 call site/docs/tests/deploy refs를 확인한다.
 - 리뷰 결과는 그대로 수용하지 말고 적대적/비판적으로 재평가한다. 각 finding마다 주장, 근거, 재현 가능성, 실제 영향, severity, 범위 적합성을 확인하고 duplicate/이미 처리됨/추측성 edge/단순 취향이면 근거와 함께 제외한다.
 - 유효한 finding은 가장 합리적인 해결 방식을 고른다: root-cause code fix, test 보강, 문서/계약 정정, 요구사항 clarification, 또는 사용자 결정 요청. 리뷰를 만족시키려고 보안/검증/계약을 약화하거나 symptom-only patch를 만들지 않는다.
 - findings는 batch로 정리한다. actionable finding은 같은 cycle에서 한 번에 수정하고 targeted verify 후 Review Pass를 반복한다. fix가 surface를 넓히지 않았으면 다음 pass는 추가 diff 중심으로 본다.
-- 새 기능/아키텍처 변경, 보안/인증 관련이면 adversarial review를 우선한다.
 - 최대 5회 반복한다. 5회 후 남은 actionable finding은 GitHub issue로 남기고 Step 7로 간다. pass 횟수는 매 pass 시작 시 TodoWrite 체크박스에 `[Review pass N/5]` 형태로 기록해 context reset 이후에도 복원할 수 있도록 한다.
 
 ## Step 7 - Local Checks
