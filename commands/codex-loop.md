@@ -114,4 +114,7 @@ feedback을 대체하지 않는다. codex-loop 자체는 기존 exit code 기반
 
 ## 작업 지시 시 주의
 
-코멘트가 모호하거나 우선순위 판단이 필요하면 코드 수정 전 사용자에게 확인. 합리적이지 않은 트집(이미 처리된 이슈, 비현실적 엣지케이스)은 근거를 남기고 제외할 수 있다. thumbs-up pass reaction을 받았고 checks가 통과하면 PR은 merge까지 진행한다.
+- codex review 결과를 그대로 작업 목록으로 받아들이지 말고 적대적/비판적으로 재평가한다. 각 comment/review item마다 주장, 근거, 재현 가능성, 실제 영향, severity, 범위 적합성을 먼저 판정한다.
+- 유효한 item은 가장 합리적인 해결 방식을 선택한다: root-cause code fix, test 보강, 문서/계약 정정, 요구사항 clarification, 또는 사용자 결정 요청. 리뷰를 만족시키려고 보안/검증/계약을 약화하거나 symptom-only patch를 만들지 않는다.
+- 코멘트가 모호하거나 우선순위 판단이 필요하면 코드 수정 전 사용자에게 확인한다. 합리적이지 않은 트집, 이미 처리된 이슈, 재현 불가 항목, 비현실적 edge case, 범위 밖 요구는 근거를 남기고 제외할 수 있다.
+- thumbs-up pass reaction을 받았고 checks가 통과하면 PR은 merge까지 진행한다.
