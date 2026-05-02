@@ -40,9 +40,15 @@ for _arg in "$@"; do
 done
 unset _arg
 
+_safe_dst() {
+  local dst="$1"
+  [[ -n "$dst" && "$dst" != "/" && "$dst" != "$HOME" ]]
+}
+
 _link() {
   local src="$1" dst="$2"
   $DRY && { ok "[dry] symlink $(basename "$dst")"; return; }
+  _safe_dst "$dst" || { err "refuse rm -rf unsafe dst: '$dst'"; return 1; }
   mkdir -p "$(dirname "$dst")"
   rm -rf "$dst"
   ln -s "$src" "$dst"
@@ -52,6 +58,7 @@ _link() {
 _copy() {
   local src="$1" dst="$2"
   $DRY && { ok "[dry] copy $(basename "$dst")"; return; }
+  _safe_dst "$dst" || { err "refuse rm -rf unsafe dst: '$dst'"; return 1; }
   mkdir -p "$(dirname "$dst")"
   if [[ -d "$src" ]]; then
     rm -rf "$dst"
@@ -180,7 +187,7 @@ _in_scope() {
   local projects_line
   projects_line=$(awk '/^---/{c++;next} c==1 && /^projects:/{print;exit}' "$cmd_file")
   [[ -z "$projects_line" ]] && return 0          # projects: 없음 → 전체 배포
-  echo "$projects_line" | grep -q "\b${repo_name}\b" && return 0  # 포함됨
+  echo "$projects_line" | grep -qE "(^|[^A-Za-z0-9_-])${repo_name}([^A-Za-z0-9_-]|$)" && return 0  # 포함됨
   return 1                                        # 스코프 밖
 }
 
