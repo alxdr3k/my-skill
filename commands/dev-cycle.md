@@ -206,7 +206,7 @@ REVIEW_DOSSIER_JSON="$("$DEV_CYCLE_HELPER" review-dossier)"
 - 유효한 finding은 가장 합리적인 해결 방식을 고른다: root-cause code fix, test 보강, 문서/계약 정정, 요구사항 clarification, 또는 사용자 결정 요청. 리뷰를 만족시키려고 보안/검증/계약을 약화하거나 symptom-only patch를 만들지 않는다.
 - findings는 batch로 정리한다. actionable finding은 같은 cycle에서 한 번에 수정하고 targeted verify 후 Review Pass를 반복한다. fix가 surface를 넓히지 않았으면 다음 pass는 추가 diff 중심으로 본다.
 - 새 기능/아키텍처 변경, 보안/인증 관련이면 adversarial review를 우선한다.
-- 최대 5회 반복한다. 5회 후 남은 actionable finding은 GitHub issue로 남기고 Step 7로 간다. pass 횟수는 매 pass 시작 시 TodoWrite 체크박스 또는 `.dev-cycle/review-pass-count`에 기록해 context reset 이후에도 복원할 수 있도록 한다.
+- 최대 5회 반복한다. 5회 후 남은 actionable finding은 GitHub issue로 남기고 Step 7로 간다. pass 횟수는 매 pass 시작 시 TodoWrite 체크박스에 `[Review pass N/5]` 형태로 기록해 context reset 이후에도 복원할 수 있도록 한다.
 
 ## Step 7 - Local Checks
 

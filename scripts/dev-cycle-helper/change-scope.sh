@@ -239,7 +239,7 @@ untracked_text_line_total() {
 
 review_dossier() {
   local type base range_ref tmp_dir scope_json numstat_file untracked_file changed_file
-  local committed_numstat_ok insertions deletions diff_files untracked_lines changed_lines
+  local committed_numstat_ok numstat_range_form insertions deletions diff_files untracked_lines changed_lines
   require_jq || return 1
 
   type="$(repo_type)"
@@ -252,11 +252,14 @@ review_dossier() {
   : > "$numstat_file"
 
   committed_numstat_ok=false
+  numstat_range_form=""
   if [[ -n "$range_ref" ]]; then
     if git diff --numstat "$range_ref...HEAD" >> "$numstat_file" 2>/dev/null; then
       committed_numstat_ok=true
+      numstat_range_form="triple_dot"
     elif git diff --numstat "$range_ref" HEAD >> "$numstat_file" 2>/dev/null; then
       committed_numstat_ok=true
+      numstat_range_form="two_dot"
       echo "WARN: triple-dot numstat failed; two-dot form used (changed_lines may include unrelated base changes)" >&2
     else
       echo "WARN: committed numstat failed; changed_lines may be underestimated (routing could be too conservative)" >&2
@@ -285,7 +288,8 @@ review_dossier() {
     --argjson diff_files "$diff_files" \
     --argjson untracked_text_lines "$untracked_lines" \
     --argjson changed_lines "$changed_lines" \
-    --argjson committed_numstat_ok "$committed_numstat_ok" '
+    --argjson committed_numstat_ok "$committed_numstat_ok" \
+    --arg numstat_range_form "$numstat_range_form" '
     def lines($s): $s | split("\n") | map(select(length > 0));
     def trigger($id; $severity; $summary_ko; $evidence):
       {id:$id, severity:$severity, summary_ko:$summary_ko, evidence:$evidence};
@@ -332,7 +336,8 @@ review_dossier() {
           changed_lines:$changed_lines,
           diff_files_count:$diff_files,
           changed_files_count:$scope.change_scope.changed_files_count,
-          committed_numstat_ok:$committed_numstat_ok
+          committed_numstat_ok:$committed_numstat_ok,
+          numstat_range_form:(if $numstat_range_form == "" then null else $numstat_range_form end)
         },
         risk_triggers:$risk_triggers,
         reviewer_route:{

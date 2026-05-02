@@ -441,8 +441,12 @@ while :; do
     elif [ "$review_request_posted" = "0" ]; then
       eyes_present=false
       echo "→ no eyes reaction on PR body or my comments; posting review request" >&2
-      if ! post_out=$(gh api "repos/$repo/issues/$pr/comments" \
+      if post_out=$(gh api "repos/$repo/issues/$pr/comments" \
         -f body="$review_request_body" 2>&1 >/dev/null); then
+        review_request_posted=1
+        review_request_polls=0
+        first_activity_probe=0
+      else
         post_class="$(classify_api_error "$post_out")"
         if [ "$post_class" = "permanent" ]; then
           record_api_error "post_review_request" permanent "$post_out"
@@ -451,9 +455,6 @@ while :; do
         fi
         echo "WARN: transient failure posting review request; will retry next poll: $post_out" >&2
       fi
-      review_request_posted=1
-      review_request_polls=0
-      first_activity_probe=0
     elif [ "$review_request_acknowledged" = "0" ]; then
       eyes_present=false
       review_request_polls=$((review_request_polls + 1))
