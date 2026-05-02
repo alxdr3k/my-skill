@@ -7,6 +7,16 @@ description: 현재 PR의 codex 리뷰를 기다리고 코멘트 수정 후 push
 
 사용자에게 보이는 보고, feedback 정리, 질문은 한국어로 작성한다. 코드, 명령, 파일명, 원문 인용은 원문 언어를 유지한다.
 
+## Model Routing
+
+Claude Code에서 model-routed sub-agent를 사용할 수 있으면 아래 원칙을 따른다. 사용할 수 없거나 handoff 비용이 더 크면 같은 세션에서 수행한다.
+
+- PR 감지, polling, pass reaction 확인, review 요청 comment 작성은 `wait-codex-review.sh`가 담당한다. 이 작업을 Haiku sub-agent로 대체하지 않는다.
+- 새 feedback의 타당성 검토가 복잡하거나 보안/아키텍처/계약 변경과 관련되면 Opus read-only reviewer를 사용한다.
+- feedback 수정은 Sonnet/main execution을 기본으로 하고, 작은 수정에는 별도 worker를 만들지 않는다.
+- Haiku 또는 Explore는 PR metadata/comment를 짧게 요약하거나 넓은 read-only 탐색을 압축할 때만 사용한다.
+- 같은 PR에서 동일 파일군에 대해 3회 이상 review/fix가 반복될 때만 Opus reviewer resume을 고려한다. 기본은 이전 finding 요약 + incremental diff를 새로 전달한다.
+
 ## 핵심 원칙: 대기 사이클마다 foreground script 1회
 
 각 대기 사이클은 `wait-codex-review.sh`를 foreground로 1회 실행해 처리한다.
@@ -64,6 +74,7 @@ polling하지 않기 위한 동작이다.
 ## Feedback 처리
 
 - codex review 결과를 그대로 작업 목록으로 받아들이지 말고 적대적/비판적으로 재평가한다. 각 comment/review item마다 주장, 근거, 재현 가능성, 실제 영향, severity, 범위 적합성을 먼저 판정한다.
+- Opus reviewer를 사용할 경우 raw PR 전체를 넘기지 말고 새 feedback, 관련 diff, 재현/검증 출력, 이전 finding 요약만 전달한다.
 - 유효한 item은 가장 합리적인 해결 방식을 선택한다: root-cause code fix, test 보강, 문서/계약 정정, 요구사항 clarification, 또는 사용자 결정 요청. 리뷰를 만족시키려고 보안/검증/계약을 약화하거나 symptom-only patch를 만들지 않는다.
 - 코멘트가 모호하거나 우선순위 판단이 필요하면 코드 수정 전 사용자에게 확인한다.
 - 이미 처리된 이슈, 재현 불가 항목, 범위 밖 요구는 근거를 남기고 제외할 수 있다.
