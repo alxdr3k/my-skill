@@ -20,6 +20,7 @@ $ARGUMENTS
 
 - If `$ARGUMENTS` is a URL or a reference (PR number, comment ID, file path), fetch the actual content first.
 - Extract every distinct actionable item. Keep independent items separate; merge only trivially-related fixes.
+- `.agents/scripts/dev-cycle-helper.sh` 또는 `$HOME/.agents/scripts/dev-cycle-helper.sh`가 있으면 `review-dossier`로 diff size, 파일 확산, 계약/중요 경로를 확인한다. dossier가 `opus_or_high_effort`를 권장하거나 review item 자체가 semantic risk를 담을 때만 현재 Codex 환경에서 명시적으로 허용된 high-capability/high-effort reviewer 사용을 고려하고, raw repo 대신 review 원문, 관련 diff, dossier/risk summary, 필요한 call site, 검증 출력만 전달한다.
 - Write the plan with Codex's `update_plan` tool - one item per discrete change. Include file/area hints in the item text so you can resume after interruption.
 - If the review is ambiguous, list your interpretation as part of the plan rather than asking up front. Only stop for a question when an item is genuinely undecidable.
 

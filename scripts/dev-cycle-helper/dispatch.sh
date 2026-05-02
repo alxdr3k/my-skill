@@ -11,6 +11,7 @@ commands:
   default-branch
   review-base
   change-scope
+  review-dossier
   sync
   init-brief
   validate-brief <run-id> <brief-log>
@@ -31,6 +32,7 @@ dev_cycle_helper_main() {
     default-branch) default_branch ;;
     review-base) review_base ;;
     change-scope) change_scope ;;
+    review-dossier) review_dossier ;;
     sync) sync_repo ;;
     init-brief) init_brief ;;
     validate-brief) shift; validate_brief "$@" ;;

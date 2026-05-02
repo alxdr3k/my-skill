@@ -79,6 +79,46 @@ jq -e '
   (.review_inputs[] | select(.kind == "untracked_files" and (.files | index("docs/untracked.md"))))
 ' "$tmp_root/scope-standard.json" >/dev/null
 
+repo_dossier_standard="$(new_repo dossier-standard)"
+cd "$repo_dossier_standard"
+printf '# Base\n' > README.md
+git add README.md
+git commit -qm "base"
+printf 'small doc update\n' >> README.md
+"$helper" review-dossier > "$tmp_root/dossier-standard.json"
+jq -e '
+  .kind == "dev_cycle_review_dossier" and
+  .change_scope.kind == "docs_only_low_risk" and
+  .review_dossier.summary.changed_lines == 1 and
+  .review_dossier.reviewer_route.recommended == "standard" and
+  (.review_dossier.risk_triggers | length == 0)
+' "$tmp_root/dossier-standard.json" >/dev/null
+
+repo_dossier_contract="$(new_repo dossier-contract)"
+cd "$repo_dossier_contract"
+mkdir -p commands
+printf '# Command\n' > commands/example.md
+"$helper" review-dossier > "$tmp_root/dossier-contract.json"
+jq -e '
+  .kind == "dev_cycle_review_dossier" and
+  .change_scope.contract_surface == true and
+  .review_dossier.reviewer_route.recommended == "opus_or_high_effort" and
+  (.review_dossier.risk_triggers[] | select(.id == "contract_surface" and .severity == "high")) and
+  (.review_dossier.risk_triggers[] | select(.id == "critical_paths" and (.evidence.paths | index("commands/example.md"))))
+' "$tmp_root/dossier-contract.json" >/dev/null
+
+repo_dossier_large="$(new_repo dossier-large)"
+cd "$repo_dossier_large"
+mkdir -p src
+seq 1 401 > src/index.ts
+"$helper" review-dossier > "$tmp_root/dossier-large.json"
+jq -e '
+  .kind == "dev_cycle_review_dossier" and
+  .review_dossier.summary.changed_lines == 401 and
+  .review_dossier.reviewer_route.recommended == "opus_or_high_effort" and
+  (.review_dossier.risk_triggers[] | select(.id == "large_patch_over_400_lines" and .severity == "high"))
+' "$tmp_root/dossier-large.json" >/dev/null
+
 repo="$(new_repo ok)"
 cd "$repo"
 eval "$("$helper" init-brief)"

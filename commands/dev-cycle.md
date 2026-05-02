@@ -31,7 +31,7 @@ DEV_CYCLE_HELPER=".agents/scripts/dev-cycle-helper.sh"
 
 Claude Code에서 model-routed sub-agent를 사용할 수 있으면 비용/품질 균형을 위해 아래 원칙을 따른다. 사용할 수 없거나 handoff 비용이 더 크면 같은 세션에서 수행한다.
 
-- Review Pass의 비판적 판단은 Opus read-only reviewer를 우선한다. 입력은 full repo가 아니라 `CHANGE_SCOPE_JSON.review_inputs`, diff/stat, 위험 trigger `rg` 결과, 필요한 call site로 제한한다.
+- Review Pass의 비판적 판단은 helper-generated `REVIEW_DOSSIER_JSON`을 먼저 만들고, 그 결과가 `opus_or_high_effort`를 권장할 때 Opus read-only reviewer를 우선한다. 입력은 full repo가 아니라 `REVIEW_DOSSIER_JSON.review_inputs`, summary/risk triggers, 필요한 diff/call site/검증 출력으로 제한한다.
 - 구현과 finding 수정은 Sonnet/main execution을 기본으로 한다. 단순 수정에 별도 Sonnet worker를 만들지 않는다.
 - PR polling, pass reaction 확인, comment fetch 같은 상태 확인은 `codex-loop`/helper script에 맡긴다. LLM이 필요한 요약/분류가 있을 때만 Haiku 또는 read-only Explore를 쓴다.
 - Opus reviewer resume은 기본값이 아니다. 같은 파일군에서 3회 이상 리뷰/반박/재검토가 이어지고 이전 판단 맥락이 중요할 때만 resume한다. 보통은 이전 finding 요약 + incremental diff로 새 리뷰를 요청한다.
@@ -191,10 +191,13 @@ CHANGE_SCOPE_JSON="$("$DEV_CYCLE_HELPER" change-scope)"
 ```bash
 REVIEW_BASE="$("$DEV_CYCLE_HELPER" review-base)"
 CHANGE_SCOPE_JSON="$("$DEV_CYCLE_HELPER" change-scope)"
+REVIEW_DOSSIER_JSON="$("$DEV_CYCLE_HELPER" review-dossier)"
 ```
 
 - `CHANGE_SCOPE_JSON.review_inputs`에 있는 base range, staged diff, unstaged diff, untracked files를 모두 리뷰한다.
-- Opus reviewer를 사용할 때도 입력을 위 review inputs와 위험 trigger 결과로 제한한다. 이전 pass의 전체 transcript를 재사용하지 말고, 필요한 경우 이전 actionable finding 요약만 넘긴다.
+- `REVIEW_DOSSIER_JSON.review_dossier`는 diff 크기, 파일 확산, 계약/중요 경로처럼 script가 계산 가능한 신호만 담는다. dossier가 없거나 helper가 실패하면 `CHANGE_SCOPE_JSON`과 아래 위험 trigger를 수동으로 적용한다.
+- `review_dossier.reviewer_route.recommended == "opus_or_high_effort"`이면 model-routed reviewer를 사용할 수 있는 환경에서는 Opus reviewer를 우선한다. 기준은 휴리스틱이다: 200라인 초과는 집중도 저하 경고, 400라인 초과는 강한 리뷰/분할 후보, 변경 파일 5개 초과와 보안/영속성/설정/배포/공개 command 경로는 high trigger다.
+- Opus reviewer를 사용할 때도 입력을 dossier의 review inputs와 risk triggers로 제한한다. 이전 pass의 전체 transcript를 재사용하지 말고, 필요한 경우 이전 actionable finding 요약만 넘긴다.
 - Direct-push repo와 Standard repo 모두 같은 입력 규칙을 쓴다. Standard repo도 `$REVIEW_BASE...HEAD`만 보지 않는다. commit 전 local diff와 untracked files가 있으면 반드시 Review Pass 입력에 포함한다.
 - Review Pass는 diff review와 impact triage/scan이 함께 통과한 상태다. impact scan을 review OK 이후 별도 단계로 두지 않는다.
 - Impact triage: docs/typo/slice/test-only처럼 외부 surface가 없으면 `Impact: local only`로 끝낸다.

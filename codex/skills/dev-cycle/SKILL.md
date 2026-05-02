@@ -179,9 +179,12 @@ CHANGE_SCOPE_JSON="$("$DEV_CYCLE_HELPER" change-scope)"
 ```bash
 REVIEW_BASE="$("$DEV_CYCLE_HELPER" review-base)"
 CHANGE_SCOPE_JSON="$("$DEV_CYCLE_HELPER" change-scope)"
+REVIEW_DOSSIER_JSON="$("$DEV_CYCLE_HELPER" review-dossier)"
 ```
 
 - `CHANGE_SCOPE_JSON.review_inputs`에 있는 base range, staged diff, unstaged diff, untracked files를 모두 리뷰한다.
+- `REVIEW_DOSSIER_JSON.review_dossier`는 diff 크기, 파일 확산, 계약/중요 경로처럼 script가 계산 가능한 신호만 담는다. dossier가 없거나 helper가 실패하면 `CHANGE_SCOPE_JSON`과 아래 위험 trigger를 수동으로 적용한다.
+- `review_dossier.reviewer_route.recommended == "opus_or_high_effort"`이면 현재 Codex 환경에서 명시적으로 허용된 high-capability/high-effort reviewer가 있을 때만 사용한다. 기준은 휴리스틱이다: 200라인 초과는 집중도 저하 경고, 400라인 초과는 강한 리뷰/분할 후보, 변경 파일 5개 초과와 보안/영속성/설정/배포/공개 command 경로는 high trigger다.
 - Direct-push repo와 Standard repo 모두 같은 입력 규칙을 쓴다. Standard repo도 `$REVIEW_BASE...HEAD`만 보지 않는다. commit 전 local diff와 untracked files가 있으면 반드시 Review Pass 입력에 포함한다.
 - Review Pass는 diff review와 impact triage/scan이 함께 통과한 상태다. impact scan을 review OK 이후 별도 단계로 두지 않는다.
 - Impact triage: docs/typo/slice/test-only처럼 외부 surface가 없으면 `Impact: local only`로 끝낸다.
